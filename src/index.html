@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" type="text/css" href="main.css" />
+</head>
+<body>
+  <div id="tabs">
+    <div class="tab active" data-id="main">W2 HD</div>
+  </div>
+  <div id="chat-resizer"></div>
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    let currentTab = 'main';
+
+    document.getElementById('tabs').addEventListener('click', (e) => {
+      if (e.target.classList.contains('close')) {
+        e.stopPropagation();
+        const tab = e.target.parentElement;
+        ipcRenderer.send('close-tab', tab.dataset.id);
+      } else if (e.target.classList.contains('tab')) {
+        ipcRenderer.send('switch-tab', e.target.dataset.id);
+      }
+    });
+
+    ipcRenderer.on('add-tab', (event, id, title) => {
+      const tab = document.createElement('div');
+      tab.className = 'tab';
+      tab.dataset.id = id;
+      tab.innerHTML = title + (id !== 'main' ? ' <span class="close">×</span>' : '');
+      document.getElementById('tabs').appendChild(tab);
+    });
+
+    ipcRenderer.on('close-tab', (event, id) => {
+      const tab = document.querySelector(`[data-id="${id}"]`);
+      if (tab) tab.remove();
+    });
+
+    ipcRenderer.on('update-active', (event, id) => {
+      const activeTab = document.querySelector('.tab.active');
+      if (activeTab) activeTab.classList.remove('active');
+      const newTab = document.querySelector(`[data-id="${id}"]`);
+      if (newTab) newTab.classList.add('active');
+      currentTab = id;
+    });
+
+    ipcRenderer.on('update-tab-title', (event, id, title) => {
+      const tab = document.querySelector(`[data-id="${id}"]`);
+      if (tab) {
+        tab.innerHTML = title + (id !== 'main' ? ' <span class="close">×</span>' : '');
+      }
+    });
+
+    let chatHeightValue = 300;
+    let isResizing = false;
+    let startY, startHeight;
+
+    ipcRenderer.on('chat-toggled', (event, visible, height) => {
+      chatHeightValue = height;
+      const resizer = document.getElementById('chat-resizer');
+      resizer.style.display = visible ? 'block' : 'none';
+      if (visible) {
+        resizer.style.position = 'fixed';
+        resizer.style.left = '0';
+        resizer.style.right = '250px';
+        resizer.style.bottom = height + 'px';
+        resizer.style.height = '5px';
+        resizer.style.background = '#8b6914';
+        resizer.style.cursor = 'ns-resize';
+        resizer.style.zIndex = '11';
+      }
+    });
+
+    document.getElementById('chat-resizer').addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = chatHeightValue;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isResizing) {
+        const delta = startY - e.clientY;
+        const newHeight = Math.max(100, startHeight + delta);
+        document.getElementById('chat-resizer').style.bottom = newHeight + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (isResizing) {
+        const resizer = document.getElementById('chat-resizer');
+        const bottom = parseInt(resizer.style.bottom);
+        ipcRenderer.send('set-chat-height', bottom);
+        isResizing = false;
+      }
+    });
+  </script>
+</body>
+</html>
