@@ -142,10 +142,14 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('switch-nav-view', (event, view) => {
-    if (view === 'worldswitcher') {
-      navView.webContents.loadFile(path.join(__dirname, 'worldswitcher.html'));
-    } else if (view === 'nav') {
-      navView.webContents.loadFile(path.join(__dirname, 'nav.html'));
+    switch (view) {
+      case 'worldswitcher':
+        navView.webContents.loadFile(path.join(__dirname, 'worldswitcher.html'));
+        break;
+      case 'nav':
+      default:
+        navView.webContents.loadFile(path.join(__dirname, 'nav.html'));
+        break;
     }
   });
 
