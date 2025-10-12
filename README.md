@@ -67,4 +67,4 @@ Feel free to submit issues or pull requests on the [GitHub repository](https://g
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the GNU Public License v3.0
