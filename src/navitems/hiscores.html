@@ -6,8 +6,27 @@
 <body>
     <div class="nav">
         <div class="nav-button special-link" onclick="goBack()">
-            <img src="../assets/LostCity.png" class="nav-icon">
+            <img src="../assets/back.png" class="nav-icon">
             <span>Back</span>
+        </div>
+        
+        <div class="hiscores-lookup">
+            <div class="lookup-section">
+                <input type="text" id="playerName" placeholder="Username" class="player-input" />
+                <button onclick="lookupPlayer()" class="lookup-btn">Look up</button>
+            </div>
+        </div>
+
+        <div id="playerStats" class="player-stats" style="display: none;">
+            <div class="stats-grid"></div>
+        </div>
+
+        <div id="loading" class="loading" style="display: none;">
+            Looking up player...
+        </div>
+
+        <div id="error" class="error-message" style="display: none;">
+            Player not found or error occurred.
         </div>
     </div>
     <script src="hiscores.js"></script>
