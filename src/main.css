@@ -1,7 +1,29 @@
+@font-face {
+    font-family: 'RS-Plain';
+    src: url('assets/fonts/RuneScape-Plain-12.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'RS-Bold';
+    src: url('assets/fonts/RuneScape-Bold-12.otf') format('opentype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'RS-Quill';
+    src: url('assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+    font-size: 16px;
+}
+
 body {
     margin: 0;
     padding: 10px;
-    font-family: Arial, sans-serif;
+    font-family: 'RS-Quill';
     background: #222222;
     color: #f0e68c;
     scrollbar-width: none;
