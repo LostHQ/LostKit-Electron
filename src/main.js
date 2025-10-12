@@ -36,6 +36,7 @@ app.whenReady().then(() => {
     title: 'LostKit - By the LostHQ Team',
     icon: path.join(__dirname, 'assets/icon.ico'),
     autoHideMenuBar: true,
+    menu: null,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
