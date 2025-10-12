@@ -33,6 +33,8 @@ app.whenReady().then(() => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'LostKit - By the LostHQ Team',
+    icon: path.join(__dirname, 'assets/icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
