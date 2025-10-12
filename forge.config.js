@@ -5,6 +5,7 @@ module.exports = {
     packagerConfig: {
         asar: true,
         icon: 'src/assets/icon.ico',
+        outDir: 'out',
         win32metadata: {
             ProductName: 'LostKit'
         }
