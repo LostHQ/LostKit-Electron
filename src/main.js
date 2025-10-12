@@ -109,9 +109,15 @@ app.whenReady().then(() => {
       return { action: 'deny' };
     });
     mainWindow.contentView.addChildView(newView);
-    newView.setVisible(false);
     primaryViews.push({ id, view: newView });
+
+    primaryViews.forEach(({ view }) => view.setVisible(false));
+    newView.setVisible(true);
+    currentTab = id;
+
     mainWindow.webContents.send('add-tab', id, title);
+    mainWindow.webContents.send('update-active', id);
+
     if (!customTitle) {
       newView.webContents.on('page-title-updated', (event, pageTitle) => {
         tabs.find(t => t.id === id).title = pageTitle;
