@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "author": "LostHQ",
   "description": "LostKit",
-  "license": "MIT",
+  "license": "GNU General Public License v3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/LostHQ/LostKit-TS/lostkit-ts.git"
