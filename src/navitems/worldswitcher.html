@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-button special-link" onclick="goBack()">
+            <img src="../assets/LostCity.png" class="nav-icon">
+            <span>Back</span>
+        </div>
+        <div class="nav-button special-link" onclick="refreshWorlds()">
+            <img src="../assets/icon.png" class="nav-icon">
+            <span>Refresh</span>
+        </div>
+        <div class="world-type-selector">
+            <button id="free-btn" class="type-btn" onclick="selectWorldType('free')">Free</button>
+            <button id="members-btn" class="type-btn active" onclick="selectWorldType('members')">Members</button>
+        </div>
+        <div class="high-detail-selector">
+            <label class="checkbox-label">
+                <input type="checkbox" id="high-detail-checkbox" checked>
+                <span class="checkmark"></span>
+                High Detail
+            </label>
+        </div>
+        <div id="content">
+            <div class="loading">Loading worlds...</div>
+        </div>
+    </div>
+    <script src="worldswitcher.js"></script>
+</body>
+</html>

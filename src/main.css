@@ -225,3 +225,131 @@ button:active, .btn:active {
 .close:hover {
     color: #fff;
 }
+
+#chat-resizer {
+    position: fixed;
+    left: 0;
+    right: 250px;
+    height: 3px;
+    background: #303030;
+    cursor: ns-resize;
+    z-index: 11;
+    display: none;
+}
+
+.world-type-selector {
+    display: flex;
+    gap: 4px;
+    margin: 8px 0;
+    padding: 0 12px;
+}
+
+.type-btn {
+    flex: 1;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.type-btn.active {
+    background: linear-gradient(135deg, #4CAF50 0%, #2e7d2e 100%);
+    border-color: #4CAF50;
+}
+
+.high-detail-selector {
+    padding: 8px 12px;
+    display: flex;
+    justify-content: center;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #f0e68c;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.checkbox-label input[type="checkbox"] {
+    display: none;
+}
+
+.checkmark {
+    width: 16px;
+    height: 16px;
+    background: transparent;
+    border: 2px solid #8b6914;
+    border-radius: 3px;
+    margin-right: 8px;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkmark {
+    background: transparent;
+    border-color: #4CAF50;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkmark::after {
+    content: "X";
+    right: 3px;
+    position: absolute;
+    color: #4CAF50;
+    font-size: 14px;
+    font-weight: bold;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+.world-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 0 12px;
+    margin-top: 8px;
+}
+
+.world-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 8px;
+    margin: 0;
+    background: url('assets/button.jpg') repeat;
+    background-size: cover;
+    border: 2px outset #8b6914;
+    border-radius: 4px;
+    color: #f0e68c;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    cursor: pointer;
+    transition: all 0.1s ease;
+    min-height: 60px;
+}
+
+.world-item:hover {
+    border: 2px inset #8b6914;
+    background-color: rgba(139, 105, 20, 0.3);
+    transform: translateY(1px);
+}
+
+.world-item:active {
+    border: 2px inset #8b6914;
+    transform: translateY(2px);
+}
+
+.world-title {
+    font-weight: bold;
+    font-size: 14px;
+    color: #fff;
+    text-align: center;
+}
+
+.world-players {
+    font-size: 12px;
+    color: #f0e68c;
+    text-align: center;
+    margin-top: 4px;
+}

@@ -5,13 +5,17 @@
 </head>
 <body>
     <div class="nav">
-        <div class="nav-button special-link" onclick="openWorldSwitcher()">
+        <div class="nav-button special-link" onclick="openNav('worldswitcher')">
             <img src="assets/LostCity.png" class="nav-icon">
             <span>Switch World</span>
         </div>
         <div class="nav-button special-link" onclick="toggleChat()">
             <img src="assets/icon.png" class="nav-icon">
             <span>Chat</span>
+        </div>
+        <div class="nav-button special-link" onclick="openNav('hiscores')">
+            <img src="assets/highscores.png" class="nav-icon">
+            <span>Hiscores</span>
         </div>
         <div class="nav-button link" onclick="addTab('https://lostcity.rs', 'Forums')">
             <img src="assets/forums.png" class="nav-icon">
@@ -28,10 +32,6 @@
         <div class="nav-button link" onclick="addTab('https://2004.lostcity.rs/worldmap', 'World Map')">
             <img src="assets/worldmap.png" class="nav-icon">
             <span>World Map</span>
-        </div>
-        <div class="nav-button link" onclick="addTab('https://2004.lostcity.rs/hiscores', 'Hiscores')">
-            <img src="assets/highscores.png" class="nav-icon">
-            <span>Hiscores</span>
         </div>
         <div class="nav-button link" onclick="addTab('https://lostcity.markets', 'Markets')">
             <img src="assets/market.png" class="nav-icon">
@@ -57,7 +57,7 @@
     <script>
         const { ipcRenderer } = require('electron');
         function addTab(url, title) { ipcRenderer.send('add-tab', url, title); }
-        function openWorldSwitcher() { ipcRenderer.send('switch-nav-view', 'worldswitcher'); }
+        function openNav(view) { ipcRenderer.send('switch-nav-view', view); }
         function toggleChat() { ipcRenderer.send('toggle-chat'); }
     </script>
 </body>

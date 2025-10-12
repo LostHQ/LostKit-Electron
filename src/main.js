@@ -17,14 +17,16 @@ function updateBounds() {
   const navWidth = 250;
   const tabHeight = 30;
   const chatHeight = chatVisible ? chatHeightValue : 0;
+  const dividerHeight = chatVisible ? 3 : 0;
   const primaryWidth = width - navWidth;
-  const primaryHeight = height - tabHeight - chatHeight;
+  const primaryHeight = height - tabHeight - chatHeight - dividerHeight;
 
   primaryViews.forEach(({ view }) => {
     view.setBounds({ x: 0, y: tabHeight, width: primaryWidth, height: primaryHeight });
   });
   navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
   chatView.setBounds({ x: 0, y: height - chatHeight, width: primaryWidth, height: chatHeight });
+  mainWindow.webContents.send('update-resizer', chatHeight);
 }
 
 app.whenReady().then(() => {
@@ -129,7 +131,9 @@ app.whenReady().then(() => {
       }
       mainWindow.webContents.send('close-tab', id);
       updateBounds();
-      ipcMain.emit('switch-tab', event, 'main');
+      if (currentTab === id) {
+        ipcMain.emit('switch-tab', event, 'main');
+      }
     }
   });
 
@@ -144,7 +148,10 @@ app.whenReady().then(() => {
   ipcMain.on('switch-nav-view', (event, view) => {
     switch (view) {
       case 'worldswitcher':
-        navView.webContents.loadFile(path.join(__dirname, 'worldswitcher.html'));
+        navView.webContents.loadFile(path.join(__dirname, '/navitems/worldswitcher.html'));
+        break;
+      case 'hiscores':
+        navView.webContents.loadFile(path.join(__dirname, '/navitems/hiscores.html'));
         break;
       case 'nav':
       default:
@@ -182,7 +189,12 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('set-chat-height', (event, height) => {
-    chatHeightValue = Math.max(100, Math.min(height, 600));
+    chatHeightValue = Math.max(200, Math.min(height, 800));
+    updateBounds();
+  });
+
+  ipcMain.on('update-chat-height', (event, height) => {
+    chatHeightValue = Math.max(200, Math.min(800, height));
     updateBounds();
   });
 });

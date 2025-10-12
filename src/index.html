@@ -60,14 +60,16 @@
       const resizer = document.getElementById('chat-resizer');
       resizer.style.display = visible ? 'block' : 'none';
       if (visible) {
-        resizer.style.position = 'fixed';
-        resizer.style.left = '0';
-        resizer.style.right = '250px';
         resizer.style.bottom = height + 'px';
-        resizer.style.height = '5px';
-        resizer.style.background = '#8b6914';
-        resizer.style.cursor = 'ns-resize';
-        resizer.style.zIndex = '11';
+      }
+    });
+
+    ipcRenderer.on('update-resizer', (event, height) => {
+      if (!isResizing) {
+        const resizer = document.getElementById('chat-resizer');
+        if (resizer.style.display === 'block') {
+          resizer.style.bottom = height + 'px';
+        }
       }
     });
 
@@ -81,8 +83,11 @@
     document.addEventListener('mousemove', (e) => {
       if (isResizing) {
         const delta = startY - e.clientY;
-        const newHeight = Math.max(100, startHeight + delta);
-        document.getElementById('chat-resizer').style.bottom = newHeight + 'px';
+        const newHeight = Math.max(200, Math.min(800, startHeight + delta));
+        chatHeightValue = newHeight;
+        const resizer = document.getElementById('chat-resizer');
+        resizer.style.bottom = newHeight + 'px';
+        ipcRenderer.send('update-chat-height', newHeight);
       }
     });
 
