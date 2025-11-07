@@ -6,6 +6,8 @@ let primaryViews = [];
 let navView;
 let chatView;
 let tabs = [{ id: 'main', url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' }];
+let tabByUrl = new Map([['https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0','main']]);
+let externalWindowsByUrl = new Map();
 let currentTab = 'main';
 let chatVisible = false;
 let chatHeightValue = 300;
@@ -33,10 +35,7 @@ app.whenReady().then(() => {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: 'LostKit - By the LostHQ Team',
-    icon: path.join(__dirname, 'assets/icon.ico'),
     autoHideMenuBar: true,
-    menu: null,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -97,14 +96,28 @@ app.whenReady().then(() => {
     mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
   });
 
-  ipcMain.on('add-tab', (event, url, customTitle) => {
-    const id = Date.now().toString();
+  
+ipcMain.on('add-tab', (event, url, customTitle) => {
+    const existingId = tabByUrl.get(url);
+    if (existingId) {
+      // focus existing tab if its view still exists; otherwise, drop stale mapping and recreate
+      const pv = primaryViews.find(pv => pv.id === existingId);
+      if (pv) {
+        primaryViews.forEach(({ view }) => view.setVisible(false));
+        pv.view.setVisible(true);
+        currentTab = existingId;
+        mainWindow.webContents.send('update-active', existingId);
+        return;
+      } else {
+        tabByUrl.delete(url);
+      }
+    }
+const id = Date.now().toString();
     const title = customTitle || url;
     tabs.push({ id, url, title });
+    tabByUrl.set(url, id);
     const newView = new WebContentsView({
-      webPreferences: {
-        webSecurity: false
-      }
+      webPreferences: { webSecurity: false }
     });
     newView.webContents.loadURL(url);
     newView.webContents.setWindowOpenHandler(({ url }) => {
@@ -123,7 +136,8 @@ app.whenReady().then(() => {
 
     if (!customTitle) {
       newView.webContents.on('page-title-updated', (event, pageTitle) => {
-        tabs.find(t => t.id === id).title = pageTitle;
+        const t = tabs.find(t => t.id === id);
+        if (t) t.title = pageTitle;
         mainWindow.webContents.send('update-tab-title', id, pageTitle);
       });
     }
@@ -132,9 +146,14 @@ app.whenReady().then(() => {
 
   ipcMain.on('close-tab', (event, id) => {
     if (id !== 'main') {
+      // find removed tab BEFORE mutating arrays so we can clean maps correctly
+      const removedTab = tabs.find(t => t.id === id);
       tabs = tabs.filter(t => t.id !== id);
       const index = primaryViews.findIndex(pv => pv.id === id);
       if (index !== -1) {
+        if (removedTab && tabByUrl.get(removedTab.url) === id) {
+          tabByUrl.delete(removedTab.url);
+        }
         mainWindow.contentView.removeChildView(primaryViews[index].view);
         primaryViews.splice(index, 1);
       }
@@ -145,6 +164,7 @@ app.whenReady().then(() => {
       }
     }
   });
+
 
   ipcMain.on('switch-tab', (event, id) => {
     currentTab = id;
@@ -182,8 +202,10 @@ app.whenReady().then(() => {
       message: 'Make sure you are logged out before switching worlds!'
     });
     if (choice === 1) {
+      tabByUrl.delete(currentTabData.url);
       currentTabData.url = url;
       currentTabData.title = title;
+      tabByUrl.set(url, currentTab);
       const currentView = primaryViews.find(pv => pv.id === currentTab);
       if (currentView) {
         currentView.view.webContents.loadURL(url);
@@ -205,6 +227,25 @@ app.whenReady().then(() => {
   ipcMain.on('update-chat-height', (event, height) => {
     chatHeightValue = Math.max(200, Math.min(800, height));
     updateBounds();
+  });
+
+  ipcMain.on('open-external', (event, url, title) => {
+    const existing = externalWindowsByUrl.get(url);
+    if (existing && !existing.isDestroyed()) {
+      existing.focus();
+      return;
+    }
+    const win = new BrowserWindow({
+      width: 1000, height: 700,
+      title: title || url,
+      webPreferences: { webSecurity: false }
+    });
+    win.loadURL(url);
+    win.setMenuBarVisibility(false);
+    externalWindowsByUrl.set(url, win);
+    win.on('closed', () => {
+      if (externalWindowsByUrl.get(url) === win) externalWindowsByUrl.delete(url);
+    });
   });
 });
 

@@ -22,7 +22,7 @@
 
 body {
     margin: 0;
-    padding: 10px;
+    padding: 3px;
     font-family: 'RS-Quill';
     background: #222222;
     color: #f0e68c;
@@ -87,6 +87,10 @@ body {
 .nav-button span {
     flex-grow: 1;
     text-align: left;
+    /* Black outline for button labels without changing fill color */
+    -webkit-text-stroke: 1.2px #2b2600;
+    -webkit-text-fill-color: currentColor;
+    paint-order: stroke fill;
 }
 
 .nav-button.special-link {
@@ -482,4 +486,202 @@ button:active, .btn:active {
     color: #ff6b6b;
     font-weight: bold;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Small arrow control inside nav buttons to open externally */
+.nav-button.link {
+  position: relative;
+}
+.nav-button .open-external {
+  margin-left: 8px;
+  padding: 3px;
+  border: 1px solid #8b6914;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  user-select: none;
+  vertical-align: middle;
+  font-size: 12px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  line-height: 0;
+  padding: 3px;
+
+  box-sizing: border-box;
+}
+.open-external .icon {
+  width: 1.1em;
+  height: 1.1em;
+  object-fit: contain;
+  display: block;
+}
+.nav-button .open-external:hover {
+  background: rgba(139,105,20,0.2);
+
+  padding: 5px;
+}
+
+/* Ensure world type selector uses RS-Plain font */
+.world-type-selector .type-btn {
+  font-family: 'RS-Plain', sans-serif;
+}
+
+
+.world-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.world-flag {
+  width: 16px;
+  height: 12px;
+  object-fit: cover;
+  border: 1px solid #8b6914;
+}
+.world-title {
+  font-family: 'RS-Plain', sans-serif;
+  font-weight: bold;
+}
+.world-players {
+  margin-left: auto;
+  font-family: 'RS-Plain', sans-serif;
+  opacity: 0.9;
+}
+
+/* Uniform external-open arrow box */
+.nav-button .open-external {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  margin-left: 8px;
+  border: 1px solid #8b6914;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: 'RS-Bold', sans-serif;
+  user-select: none;
+  vertical-align: middle;
+  font-size: 12px;
+}
+.nav-button .open-external:hover { background: rgba(139,105,20,0.2); }
+
+/* Chat resizer bar at top of IRC panel */
+.chat-resizer {
+  height: 3px;
+  background: #303030;
+  cursor: ns-resize;
+  z-index: 11;
+  display: block;
+}
+
+
+/* ---- Uniform external arrow layout ---- */
+.nav-button { 
+  display: flex; 
+  align-items: center; 
+  position: relative;
+  box-sizing: border-box;
+}
+
+.nav-button .nav-icon {
+  flex: 0 0 auto;
+  margin-right: 8px;
+}
+
+.nav-button.link { 
+  padding-right: 40px; /* reserve space for arrow box */
+}
+
+.nav-button.link span:first-of-type {
+  flex: 1 1 auto; /* text takes remaining space */
+}
+
+.nav-button.link .open-external {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #8b6914;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  font-family: 'RS-Bold', sans-serif;
+  user-select: none;
+  line-height: 1;
+  flex: 0 0 20px;
+  box-sizing: border-box;
+}
+
+
+
+/* === External link icon: frameless + currentColor === */
+.nav-button 
+
+
+
+/* Use the SVG as a mask so the icon color follows the button text color */
+
+
+
+/* ensure hover doesn't reintroduce bg */
+.nav-button .open-external:hover {
+  background: transparent !important;
+}
+
+/* Robust outline fallback for labels (works even if -webkit-text-stroke is ignored) */
+.nav-button.link span:first-of-type,
+.nav-button.special-link span {
+  text-shadow:
+    -1px 0 #000,
+     1px 0 #000,
+     0 -1px #000,
+     0  1px #000,
+    -1px -1px #000,
+     1px -1px #000,
+    -1px  1px #000,
+     1px  1px #000;
+}
+
+/* === FINAL enforced styles for external icon box === */
+.open-external {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+
+  width: 26px !important;
+  height: 26px !important;
+  padding: 3px !important;                 /* default inner space */
+
+  border: 2px solid currentColor !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+
+  transition: padding 0.15s ease, background 0.15s ease !important;
+}
+
+.open-external:hover {
+  padding: 5px !important;                 /* icon breathes inward on hover; outer size unchanged */
+}
+
+/* === Restore original SVG icon rendering === */
+.nav-button .open-external .icon,
+.open-external .icon {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  filter: none !important;
 }
