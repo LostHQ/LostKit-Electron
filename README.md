@@ -1,6 +1,6 @@
 # LostKit
 
-LostKit is a desktop application built with Electron and TypeScript, designed for 2004Scape (Lost City) players. It provides useful tools such as hiscores lookup and world switcher to enhance your gaming experience.
+LostKit is a desktop application built with Electron and JavaScript, designed for 2004Scape (Lost City) players. It provides useful tools such as hiscores lookup and world switcher to enhance your gaming experience.
 
 ## Dependencies
 1. Node JS: [nodejs.org](https://nodejs.org/)
@@ -10,7 +10,7 @@ LostKit is a desktop application built with Electron and TypeScript, designed fo
 
 1. Clone the repository:
    ```
-   git clone https://github.com/LostHQ/LostKit-TS.git
+   git clone https://github.com/LostHQ/LostKit-Electron.git
    ```
 2. Install the dependencies:
    ```
@@ -63,7 +63,7 @@ The built files will be available in the `out` directory.
 
 ## Contributing
 
-Feel free to submit issues or pull requests on the [GitHub repository](https://github.com/LostHQ/LostKit-TS).
+Feel free to submit issues or pull requests on the [GitHub repository](https://github.com/LostHQ/LostKit-Electron).
 
 ## License
 
