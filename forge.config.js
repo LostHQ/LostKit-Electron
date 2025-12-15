@@ -48,7 +48,7 @@ module.exports = {
             config: {
                 repository: {
                     owner: 'LostHQ',
-                    name: 'LostKit-TS'
+                    name: 'LostKit-Electron'
                 }
             }
         }
