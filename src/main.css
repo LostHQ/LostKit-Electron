@@ -22,7 +22,7 @@
 
 body {
     margin: 0;
-    padding: 3px;
+    padding: 0;
     font-family: 'RS-Quill';
     background: #222222;
     color: #f0e68c;
@@ -87,7 +87,6 @@ body {
 .nav-button span {
     flex-grow: 1;
     text-align: left;
-    /* Black outline for button labels without changing fill color */
     -webkit-text-stroke: 1.2px #2b2600;
     -webkit-text-fill-color: currentColor;
     paint-order: stroke fill;
@@ -490,198 +489,361 @@ button:active, .btn:active {
 
 /* Small arrow control inside nav buttons to open externally */
 .nav-button.link {
-  position: relative;
+    position: relative;
 }
+
 .nav-button .open-external {
-  margin-left: 8px;
-  padding: 3px;
-  border: 1px solid #8b6914;
-  border-radius: 3px;
-  cursor: pointer;
-  font-weight: bold;
-  user-select: none;
-  vertical-align: middle;
-  font-size: 12px;
-
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  line-height: 0;
-  padding: 3px;
-
-  box-sizing: border-box;
+    margin-left: 8px;
+    padding: 3px;
+    border: 1px solid #8b6914;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+    vertical-align: middle;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    line-height: 0;
+    padding: 3px;
+    box-sizing: border-box;
 }
+
 .open-external .icon {
-  width: 1.1em;
-  height: 1.1em;
-  object-fit: contain;
-  display: block;
+    width: 1.1em;
+    height: 1.1em;
+    object-fit: contain;
+    display: block;
 }
-.nav-button .open-external:hover {
-  background: rgba(139,105,20,0.2);
 
-  padding: 5px;
+.nav-button .open-external:hover {
+    background: rgba(139, 105, 20, 0.2);
+    padding: 5px;
 }
 
 /* Ensure world type selector uses RS-Plain font */
 .world-type-selector .type-btn {
-  font-family: 'RS-Plain', sans-serif;
+    font-family: 'RS-Plain', sans-serif;
 }
-
 
 .world-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
+
 .world-flag {
-  width: 16px;
-  height: 12px;
-  object-fit: cover;
-  border: 1px solid #8b6914;
+    width: 16px;
+    height: 12px;
+    object-fit: cover;
+    border: 1px solid #8b6914;
 }
+
 .world-title {
-  font-family: 'RS-Plain', sans-serif;
-  font-weight: bold;
+    font-family: 'RS-Plain', sans-serif;
+    font-weight: bold;
 }
+
 .world-players {
-  margin-left: auto;
-  font-family: 'RS-Plain', sans-serif;
-  opacity: 0.9;
+    margin-left: auto;
+    font-family: 'RS-Plain', sans-serif;
+    opacity: 0.9;
 }
 
 /* Uniform external-open arrow box */
 .nav-button .open-external {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  line-height: 1;
-  margin-left: 8px;
-  border: 1px solid #8b6914;
-  border-radius: 3px;
-  cursor: pointer;
-  font-weight: bold;
-  font-family: 'RS-Bold', sans-serif;
-  user-select: none;
-  vertical-align: middle;
-  font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    margin-left: 8px;
+    border: 1px solid #8b6914;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: 'RS-Bold', sans-serif;
+    user-select: none;
+    vertical-align: middle;
+    font-size: 12px;
 }
-.nav-button .open-external:hover { background: rgba(139,105,20,0.2); }
+
+.nav-button .open-external:hover {
+    background: rgba(139, 105, 20, 0.2);
+}
 
 /* Chat resizer bar at top of IRC panel */
 .chat-resizer {
-  height: 3px;
-  background: #303030;
-  cursor: ns-resize;
-  z-index: 11;
-  display: block;
+    height: 3px;
+    background: #303030;
+    cursor: ns-resize;
+    z-index: 11;
+    display: block;
 }
 
-
 /* ---- Uniform external arrow layout ---- */
-.nav-button { 
-  display: flex; 
-  align-items: center; 
-  position: relative;
-  box-sizing: border-box;
+.nav-button {
+    display: flex;
+    align-items: center;
+    position: relative;
+    box-sizing: border-box;
 }
 
 .nav-button .nav-icon {
-  flex: 0 0 auto;
-  margin-right: 8px;
+    flex: 0 0 auto;
+    margin-right: 8px;
 }
 
-.nav-button.link { 
-  padding-right: 40px; /* reserve space for arrow box */
+.nav-button.link {
+    padding-right: 40px;
 }
 
 .nav-button.link span:first-of-type {
-  flex: 1 1 auto; /* text takes remaining space */
+    flex: 1 1 auto;
 }
 
 .nav-button.link .open-external {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #8b6914;
-  border-radius: 3px;
-  cursor: pointer;
-  font-weight: bold;
-  font-family: 'RS-Bold', sans-serif;
-  user-select: none;
-  line-height: 1;
-  flex: 0 0 20px;
-  box-sizing: border-box;
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #8b6914;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+    font-family: 'RS-Bold', sans-serif;
+    user-select: none;
+    line-height: 1;
+    flex: 0 0 20px;
+    box-sizing: border-box;
 }
 
-
-
-/* === External link icon: frameless + currentColor === */
-.nav-button 
-
-
-
-/* Use the SVG as a mask so the icon color follows the button text color */
-
-
-
-/* ensure hover doesn't reintroduce bg */
 .nav-button .open-external:hover {
-  background: transparent !important;
+    background: transparent !important;
 }
 
-/* Robust outline fallback for labels (works even if -webkit-text-stroke is ignored) */
 .nav-button.link span:first-of-type,
 .nav-button.special-link span {
-  text-shadow:
-    -1px 0 #000,
-     1px 0 #000,
-     0 -1px #000,
-     0  1px #000,
-    -1px -1px #000,
-     1px -1px #000,
-    -1px  1px #000,
-     1px  1px #000;
+    text-shadow:
+        -1px 0 #000,
+        1px 0 #000,
+        0 -1px #000,
+        0 1px #000,
+        -1px -1px #000,
+        1px -1px #000,
+        -1px 1px #000,
+        1px 1px #000;
 }
 
-/* === FINAL enforced styles for external icon box === */
 .open-external {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  box-sizing: border-box !important;
-
-  width: 26px !important;
-  height: 26px !important;
-  padding: 3px !important;                 /* default inner space */
-
-  border: 2px solid currentColor !important;
-  border-radius: 4px !important;
-  background: transparent !important;
-
-  transition: padding 0.15s ease, background 0.15s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    width: 26px !important;
+    height: 26px !important;
+    padding: 3px !important;
+    border: 2px solid currentColor !important;
+    border-radius: 4px !important;
+    background: transparent !important;
+    transition: padding 0.15s ease, background 0.15s ease !important;
 }
 
 .open-external:hover {
-  padding: 5px !important;                 /* icon breathes inward on hover; outer size unchanged */
+    padding: 5px !important;
 }
 
-/* === Restore original SVG icon rendering === */
 .nav-button .open-external .icon,
 .open-external .icon {
-  display: block !important;
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  filter: none !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    filter: none !important;
+}
+
+/* ========== STOPWATCH PANEL STYLES ========== */
+.stopwatch-panel .mode-indicator,
+.stopwatch-panel .section-title,
+.stopwatch-panel .setting-row,
+.stopwatch-panel .setting-row label,
+.stopwatch-panel .range-value,
+.stopwatch-panel .big-btn,
+.stopwatch-panel .btn,
+.stopwatch-panel .sound-checkbox-label,
+.stopwatch-panel .mode-btn {
+    font-family: 'RS-Plain', sans-serif !important;
+}
+
+.stopwatch-panel {
+    font-family: 'RS-Plain', sans-serif;
+    padding: 12px;
+}
+
+.stopwatch-panel .panel-section {
+    margin-bottom: 20px;
+}
+
+.stopwatch-panel .section-title {
+    font-size: 14px;
+    color: #f0e68c;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    border-bottom: 1px solid #8b6914;
+    padding-bottom: 4px;
+}
+
+.stopwatch-panel .section-spacing {
+    margin-top: 25px;
+}
+
+.stopwatch-panel .setting-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: #f0e68c;
+    font-size: 12px;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.stopwatch-panel .setting-row label {
+    flex: 0 0 80px;
+    font-family: 'RS-Plain', sans-serif !important;
+}
+
+.stopwatch-panel input[type="color"] {
+    width: 50px;
+    height: 30px;
+    border: 2px solid #8b6914;
+    cursor: pointer;
+    background: #2a2a2a;
+    border-radius: 4px;
+}
+
+.stopwatch-panel input[type="range"] {
+    flex: 0 1 90px;
+    cursor: pointer;
+    max-width: 90px;
+}
+
+.stopwatch-panel input[type="number"] {
+    width: 70px;
+    padding: 4px 6px;
+    background: #2a2a2a;
+    border: 2px solid #8b6914;
+    border-radius: 4px;
+    color: #f0e68c;
+    font-family: 'RS-Plain', sans-serif;
+    font-size: 12px;
+}
+
+.stopwatch-panel .range-value {
+    min-width: 50px;
+    text-align: right;
+    color: #4CAF50;
+    font-weight: bold;
+}
+
+.stopwatch-panel .control-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stopwatch-panel .big-btn {
+    padding: 12px;
+    font-size: 13px;
+    text-align: center;
+}
+
+.stopwatch-panel .mode-indicator {
+    padding: 8px;
+    background: rgba(139, 105, 20, 0.3);
+    border: 1px solid #8b6914;
+    border-radius: 4px;
+    text-align: center;
+    color: #f0e68c;
+    font-weight: bold;
+    margin-bottom: 12px;
+}
+
+/* Stopwatch sound checkbox - accurate square */
+.stopwatch-panel .sound-checkmark {
+    width: 18px;
+    height: 18px;
+    background: transparent;
+    border: 2px solid #8b6914;
+    border-radius: 3px;
+    margin-right: 8px;
+    position: relative;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.stopwatch-panel .sound-checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #f0e68c;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    font-family: 'RS-Plain', sans-serif;
+    width: 100%;
+}
+
+.stopwatch-panel .sound-checkbox-label input[type="checkbox"] {
+    display: none;
+}
+
+.stopwatch-panel .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark {
+    background: transparent;
+    border-color: #4CAF50;
+}
+
+.stopwatch-panel .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark::after {
+    content: "X";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #4CAF50;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
+}
+
+/* Stopwatch mode selector */
+.stopwatch-panel .mode-selector {
+    display: flex;
+    gap: 4px;
+    margin: 8px 0;
+    padding: 0;
+    justify-content: center;
+}
+
+.stopwatch-panel .mode-btn {
+    flex: 0 1 auto;
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-family: 'RS-Plain', sans-serif;
+    min-width: 70px;
+}
+
+.stopwatch-panel .mode-btn.active {
+    background: linear-gradient(135deg, #4CAF50 0%, #2e7d2e 100%);
+    border-color: #4CAF50;
 }

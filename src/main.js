@@ -2,6 +2,7 @@ const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require(
 const path = require('path');
 
 let mainWindow;
+let stopwatchWindow = null;
 let primaryViews = [];
 let navView;
 let chatView;
@@ -9,7 +10,7 @@ let tabs = [{ id: 'main', url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&wor
 let tabByUrl = new Map([['https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0','main']]);
 let externalWindowsByUrl = new Map();
 let currentTab = 'main';
-let chatVisible = false;
+let chatVisible = true;
 let chatHeightValue = 300;
 
 function updateBounds() {
@@ -31,10 +32,56 @@ function updateBounds() {
   mainWindow.webContents.send('update-resizer', chatHeight);
 }
 
+function createStopwatchWindow() {
+  if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+    stopwatchWindow.focus();
+    return;
+  }
+
+  // Get game view bounds
+  const contentBounds = mainWindow.getContentBounds();
+  const navWidth = 250;
+  const tabHeight = 30;
+  const primaryWidth = contentBounds.width - navWidth;
+  
+  stopwatchWindow = new BrowserWindow({
+    width: 250,
+    height: 120,
+    x: contentBounds.x + 20,
+    y: contentBounds.y + tabHeight + 20,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    parent: mainWindow,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    }
+  });
+
+  const stopwatchPath = path.join(__dirname, 'stopwatch-overlay.html');
+  console.log('Loading stopwatch from:', stopwatchPath);
+  
+  stopwatchWindow.loadFile(stopwatchPath).catch(err => {
+    console.error('Failed to load stopwatch-overlay.html:', err);
+  });
+  
+  stopwatchWindow.setIgnoreMouseEvents(false);
+  
+  stopwatchWindow.on('closed', () => {
+    stopwatchWindow = null;
+    if (navView && navView.webContents) {
+      navView.webContents.send('stopwatch-overlay-closed');
+    }
+  });
+}
+
 app.whenReady().then(() => {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1100,
+    height: 920,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
@@ -64,7 +111,7 @@ app.whenReady().then(() => {
     return { action: 'deny' };
   });
   mainWindow.contentView.addChildView(chatView);
-  chatView.setVisible(false);
+  chatView.setVisible(true);
 
   const mainView = new WebContentsView({
     webPreferences: {
@@ -89,6 +136,56 @@ app.whenReady().then(() => {
     updateBounds();
   });
 
+  // Stopwatch IPC handlers
+  ipcMain.on('toggle-stopwatch-overlay', (event, shouldOpen) => {
+    console.log('Toggle overlay:', shouldOpen);
+    if (shouldOpen) {
+      createStopwatchWindow();
+      if (navView && navView.webContents) {
+        navView.webContents.send('stopwatch-overlay-state', true);
+      }
+    } else {
+      if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+        stopwatchWindow.close();
+      }
+    }
+  });
+
+  ipcMain.on('check-stopwatch-overlay-state', (event) => {
+    const isOpen = stopwatchWindow && !stopwatchWindow.isDestroyed();
+    event.sender.send('stopwatch-overlay-state', isOpen);
+  });
+
+  ipcMain.on('update-stopwatch-mode', (event, mode, countdownTime) => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('update-mode', mode, countdownTime);
+    }
+  });
+
+  ipcMain.on('update-stopwatch-setting', (event, setting, value) => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('update-setting', setting, value);
+    }
+  });
+
+  ipcMain.on('resize-stopwatch-window', (event, width, height) => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.setSize(width, height);
+    }
+  });
+
+  mainWindow.on('focus', () => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('main-window-focused', true);
+    }
+  });
+
+  mainWindow.on('blur', () => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('main-window-focused', false);
+    }
+  });
+
   ipcMain.on('toggle-chat', () => {
     chatVisible = !chatVisible;
     chatView.setVisible(chatVisible);
@@ -96,11 +193,9 @@ app.whenReady().then(() => {
     mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
   });
 
-  
-ipcMain.on('add-tab', (event, url, customTitle) => {
+  ipcMain.on('add-tab', (event, url, customTitle) => {
     const existingId = tabByUrl.get(url);
     if (existingId) {
-      // focus existing tab if its view still exists; otherwise, drop stale mapping and recreate
       const pv = primaryViews.find(pv => pv.id === existingId);
       if (pv) {
         primaryViews.forEach(({ view }) => view.setVisible(false));
@@ -112,7 +207,7 @@ ipcMain.on('add-tab', (event, url, customTitle) => {
         tabByUrl.delete(url);
       }
     }
-const id = Date.now().toString();
+    const id = Date.now().toString();
     const title = customTitle || url;
     tabs.push({ id, url, title });
     tabByUrl.set(url, id);
@@ -146,7 +241,6 @@ const id = Date.now().toString();
 
   ipcMain.on('close-tab', (event, id) => {
     if (id !== 'main') {
-      // find removed tab BEFORE mutating arrays so we can clean maps correctly
       const removedTab = tabs.find(t => t.id === id);
       tabs = tabs.filter(t => t.id !== id);
       const index = primaryViews.findIndex(pv => pv.id === id);
@@ -165,7 +259,6 @@ const id = Date.now().toString();
     }
   });
 
-
   ipcMain.on('switch-tab', (event, id) => {
     currentTab = id;
     primaryViews.forEach(({ view }) => view.setVisible(false));
@@ -181,6 +274,9 @@ const id = Date.now().toString();
         break;
       case 'hiscores':
         navView.webContents.loadFile(path.join(__dirname, '/navitems/hiscores.html'));
+        break;
+      case 'stopwatch':
+        navView.webContents.loadFile(path.join(__dirname, '/navitems/stopwatch.html'));
         break;
       case 'nav':
       default:
@@ -217,6 +313,9 @@ const id = Date.now().toString();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.close();
+    }
   });
 
   ipcMain.on('set-chat-height', (event, height) => {
