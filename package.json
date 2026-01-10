@@ -1,6 +1,6 @@
 {
   "name": "lostkit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "LostHQ",
   "description": "LostKit",
   "license": "GNU General Public License v3.0",
@@ -19,7 +19,7 @@
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1",
     "electron-window-state": "^5.0.3",
-    "update-electron-app": "^3.1.0"
+    "update-electron-app": "^3.1.2"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.6.0",
