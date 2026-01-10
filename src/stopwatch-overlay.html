@@ -188,27 +188,42 @@
     document.addEventListener('mousedown', (e) => {
       if (e.target === timerEl || e.target === document.body || e.target.id === 'container') {
         userDragging = true;
+        try { ipcRenderer.send('overlay-interacting', true); } catch (e) {}
         const { remote } = require('electron');
         const win = remote.getCurrentWindow();
         const { screenX, screenY } = e;
         const { x, y } = win.getBounds();
-        
+
         const onMouseMove = (moveEvent) => {
           const newX = moveEvent.screenX - (screenX - x);
           const newY = moveEvent.screenY - (screenY - y);
           win.setPosition(newX, newY);
         };
-        
+
         const onMouseUp = () => {
           document.removeEventListener('mousemove', onMouseMove);
           document.removeEventListener('mouseup', onMouseUp);
-          setTimeout(() => { userDragging = false; }, 100);
+          setTimeout(() => { userDragging = false; try { ipcRenderer.send('overlay-interacting', false); } catch (e) {} }, 100);
         };
-        
+
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
       }
     });
+
+    // Notify main when window minimize/restore events occur (main also listens on BrowserWindow)
+    try {
+      const { remote } = require('electron');
+      const win = remote.getCurrentWindow();
+      win.on('minimize', () => {
+        ipcRenderer.send('stopwatch-minimized');
+      });
+      win.on('restore', () => {
+        ipcRenderer.send('stopwatch-restored');
+      });
+    } catch (e) {
+      // ignore if remote not available
+    }
 
     // Function to auto-resize window based on content
     function resizeWindow() {
@@ -397,6 +412,25 @@
         autoLoop = value;
         console.log('Auto-loop set to:', autoLoop);
       }
+      else if (setting === 'start') {
+        // External command to start the AFK countdown immediately
+        if (value === true && mode === 'afk') {
+          console.log('overlay received start command; mode=', mode, 'running=', running, 'seconds=', seconds);
+          try { ipcRenderer.send('overlay-log', `received start; mode=${mode} running=${running} seconds=${seconds}`); } catch (e) {}
+          if (soundAlertEnabled && !audioContext) initAudio();
+          seconds = 0;
+          soundPlayed = false;
+          if (running) {
+            clearInterval(interval);
+          }
+          interval = setInterval(tick, 1000);
+          console.log('overlay starting interval');
+          try { ipcRenderer.send('overlay-log', 'starting interval'); } catch (e) {}
+          running = true;
+          startBtn.textContent = 'Pause';
+          updateDisplay();
+        }
+      }
     });
 
     // Listen for main window focus changes
@@ -416,6 +450,9 @@
         remote.getCurrentWindow().close();
       }
     });
+
+    // Minimize button removed to avoid separate taskbar entry; overlay minimization
+    // is handled by the OS or programmatically via the nav panel.
 
     // Initial setup
     // Set initial compact size

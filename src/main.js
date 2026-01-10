@@ -3,6 +3,9 @@ const path = require('path');
 
 let mainWindow;
 let stopwatchWindow = null;
+let afkAuto = false;
+let overlayMinimized = false;
+let overlayInteracting = false;
 let primaryViews = [];
 let navView;
 let chatView;
@@ -34,6 +37,9 @@ function updateBounds() {
 
 function createStopwatchWindow() {
   if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+    if (stopwatchWindow.isMinimized && stopwatchWindow.isMinimized()) {
+      stopwatchWindow.restore();
+    }
     stopwatchWindow.focus();
     return;
   }
@@ -54,7 +60,8 @@ function createStopwatchWindow() {
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
-    parent: mainWindow,
+    // Do not set `parent` so the overlay remains visible when the main window is minimized
+    parent: null,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -72,8 +79,23 @@ function createStopwatchWindow() {
   
   stopwatchWindow.on('closed', () => {
     stopwatchWindow = null;
+    overlayMinimized = false;
     if (navView && navView.webContents) {
       navView.webContents.send('stopwatch-overlay-closed');
+    }
+  });
+
+  stopwatchWindow.on('minimize', () => {
+    overlayMinimized = true;
+    if (navView && navView.webContents) {
+      navView.webContents.send('stopwatch-overlay-state', false);
+    }
+  });
+
+  stopwatchWindow.on('restore', () => {
+    overlayMinimized = false;
+    if (navView && navView.webContents) {
+      navView.webContents.send('stopwatch-overlay-state', true);
     }
   });
 }
@@ -140,6 +162,8 @@ app.whenReady().then(() => {
   ipcMain.on('toggle-stopwatch-overlay', (event, shouldOpen) => {
     console.log('Toggle overlay:', shouldOpen);
     if (shouldOpen) {
+      // Manual open request should always open (user intent)
+      overlayMinimized = false;
       createStopwatchWindow();
       if (navView && navView.webContents) {
         navView.webContents.send('stopwatch-overlay-state', true);
@@ -149,6 +173,23 @@ app.whenReady().then(() => {
         stopwatchWindow.close();
       }
     }
+  });
+
+  // Track when the stopwatch window is minimized/restored so auto-open logic respects user's minimize
+  ipcMain.on('stopwatch-minimized', () => {
+    overlayMinimized = true;
+    overlayInteracting = false;
+  });
+
+  ipcMain.on('stopwatch-restored', () => {
+    overlayMinimized = false;
+    overlayInteracting = false;
+  });
+
+  ipcMain.on('overlay-interacting', (event, val) => {
+    overlayInteracting = !!val;
+    // Small log for debugging
+    console.log('overlay-interacting ->', overlayInteracting);
   });
 
   ipcMain.on('check-stopwatch-overlay-state', (event) => {
@@ -163,6 +204,12 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('update-stopwatch-setting', (event, setting, value) => {
+    // Track afkAuto in main so we can auto-open overlay on blur/minimize
+    console.log('ipcMain received update-stopwatch-setting', setting, value);
+    if (setting === 'afkAuto') {
+      afkAuto = !!value;
+      console.log('afkAuto set to', afkAuto);
+    }
     if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
       stopwatchWindow.webContents.send('update-setting', setting, value);
     }
@@ -174,15 +221,94 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.on('overlay-log', (event, msg) => {
+    console.log('overlay:', msg);
+  });
+
   mainWindow.on('focus', () => {
+    console.log('mainWindow focused — afkAuto:', afkAuto, 'overlayMinimized:', overlayMinimized);
     if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
       stopwatchWindow.webContents.send('main-window-focused', true);
+    }
+    if (navView && navView.webContents) {
+      navView.webContents.send('main-window-focused', true);
+    }
+    // When LostKit regains focus, set overlay to AFK 1:30 but don't start it
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('update-mode', 'afk', 90);
     }
   });
 
   mainWindow.on('blur', () => {
+    console.log('mainWindow blurred — afkAuto:', afkAuto, 'overlayMinimized:', overlayMinimized);
+    // If blur was caused by focusing the stopwatch overlay, or the overlay is being
+    // actively dragged/ interacted with, ignore to avoid auto-triggering AFK
+    try {
+      const focused = BrowserWindow.getFocusedWindow();
+      if ((focused && stopwatchWindow && focused.id === stopwatchWindow.id) || overlayInteracting) {
+        console.log('Blur due to overlay focus/interaction — skipping AFK auto-start');
+        return;
+      }
+    } catch (e) {
+      console.log('Error checking focused window on blur:', e);
+    }
     if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
       stopwatchWindow.webContents.send('main-window-focused', false);
+    }
+    if (navView && navView.webContents) {
+      navView.webContents.send('main-window-focused', false);
+    }
+    // When LostKit loses focus, auto-open/start overlay if afkAuto enabled and user hasn't minimized overlay
+    if (afkAuto && !overlayMinimized) {
+      console.log('AFK auto-trigger: creating/opening overlay and starting AFK countdown');
+      createStopwatchWindow();
+      // Ensure overlay is in AFK mode and start the countdown
+      if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+        stopwatchWindow.webContents.send('update-mode', 'afk', 90);
+        setTimeout(() => {
+          if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+            stopwatchWindow.webContents.send('update-setting', 'start', true);
+          }
+        }, 300);
+      }
+      if (navView && navView.webContents) {
+        navView.webContents.send('stopwatch-overlay-state', true);
+      }
+    }
+  });
+
+  mainWindow.on('minimize', () => {
+    console.log('mainWindow minimized — afkAuto:', afkAuto, 'overlayMinimized:', overlayMinimized);
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('main-window-focused', false);
+    }
+    if (navView && navView.webContents) {
+      navView.webContents.send('main-window-focused', false);
+    }
+    if (afkAuto && !overlayMinimized) {
+      createStopwatchWindow();
+      if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+        stopwatchWindow.webContents.send('update-mode', 'afk', 90);
+        setTimeout(() => {
+          if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+            stopwatchWindow.webContents.send('update-setting', 'start', true);
+          }
+        }, 300);
+      }
+      if (navView && navView.webContents) {
+        navView.webContents.send('stopwatch-overlay-state', true);
+      }
+    }
+  });
+
+  mainWindow.on('restore', () => {
+    if (stopwatchWindow && !stopwatchWindow.isDestroyed()) {
+      stopwatchWindow.webContents.send('main-window-focused', true);
+      // Reset overlay to AFK 1:30 but do not start
+      stopwatchWindow.webContents.send('update-mode', 'afk', 90);
+    }
+    if (navView && navView.webContents) {
+      navView.webContents.send('main-window-focused', true);
     }
   });
 

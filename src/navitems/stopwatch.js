@@ -6,6 +6,7 @@ let countdownTime = 90;
 let soundAlert = false;
 let soundVolume = 30;
 let autoLoop = false;
+let afkAuto = false;
 let color = '#00ff00';
 let size = 48;
 let opacity = 100;
@@ -27,6 +28,7 @@ const sizeSlider = document.getElementById('size-slider');
 const sizeValue = document.getElementById('size-value');
 const opacitySlider = document.getElementById('opacity-slider');
 const opacityValue = document.getElementById('opacity-value');
+const afkAutoCheckbox = document.getElementById('afk-auto-checkbox');
 
 // Audio context for test beep
 let audioContext = null;
@@ -82,6 +84,8 @@ ipcRenderer.on('stopwatch-overlay-closed', () => {
     overlayOpen = false;
     updateOverlayButton();
 });
+
+// main-window-focused events are handled by main process for auto behavior
 
 // Update the overlay button text
 function updateOverlayButton() {
@@ -216,6 +220,13 @@ autoLoopCheckbox.addEventListener('change', () => {
     ipcRenderer.send('update-stopwatch-setting', 'autoLoop', autoLoop);
 });
 
+// AFK Auto checkbox
+afkAutoCheckbox.addEventListener('change', () => {
+    afkAuto = afkAutoCheckbox.checked;
+    console.log('nav panel: afkAuto changed ->', afkAuto);
+    ipcRenderer.send('update-stopwatch-setting', 'afkAuto', afkAuto);
+});
+
 // Volume slider
 volumeSlider.addEventListener('input', (e) => {
     soundVolume = parseInt(e.target.value);
@@ -260,6 +271,11 @@ soundAlertCheckbox.checked = soundAlert;
 autoLoopCheckbox.checked = autoLoop;
 volumeSlider.value = soundVolume;
 volumeValue.textContent = `${soundVolume}%`;
+afkAutoCheckbox.checked = afkAuto;
+
+// Inform main process of current AFK Auto setting on load so auto behavior works
+ipcRenderer.send('update-stopwatch-setting', 'afkAuto', afkAuto);
+console.log('nav panel: initial afkAuto sent ->', afkAuto);
 
 // Back button function
 function goBack() {
