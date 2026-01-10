@@ -16,7 +16,10 @@ module.exports = {
         {
             name: '@electron-forge/maker-squirrel',
             config: {
-                setupIcon: 'src/assets/icon.ico'
+                setupIcon: 'src/assets/icon.ico',
+                name: 'LostKit',
+                exe: 'LostKit.exe',
+                noMsi: true
             },
         },
         // Universal
