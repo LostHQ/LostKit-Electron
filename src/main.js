@@ -1,5 +1,17 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const APP_TITLE = 'LostKit by LostHQ Team';
+try {
+  if (process.env.NODE_ENV !== 'development') {
+    const { updateElectronApp } = require('update-electron-app');
+    updateElectronApp({
+      updateInterval: '1 hour',
+      notifyUser: true
+    });
+  }
+} catch (e) {
+  console.error('Failed to initialize updater:', e);
+}
 
 let mainWindow;
 let primaryViews = [];
@@ -36,6 +48,7 @@ app.whenReady().then(() => {
     width: 1200,
     height: 800,
     autoHideMenuBar: true,
+    title: APP_TITLE,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -43,6 +56,11 @@ app.whenReady().then(() => {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  mainWindow.webContents.on('page-title-updated', (event) => {
+    event.preventDefault();
+    mainWindow.setTitle(APP_TITLE);
+  });
 
   navView = new WebContentsView({
     webPreferences: {
