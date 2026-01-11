@@ -27,6 +27,14 @@ module.exports = {
                 bin: 'LostKit'
             }
         },
+        {// Deb (Linux)
+            name: '@electron-forge/maker-deb',
+            config: { }
+        },
+        {// Rpm (Linux)
+            name: '@electron-forge/maker-rpm',
+            config: { }
+        },
     ],
     plugins: [
         {
