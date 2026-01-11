@@ -1,4 +1,5 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require("electron");
+const { updateElectronApp, UpdateSourceType } = require('update-electron-app')
 const version = require("../package.json").version;
 const author = require("../package.json").author;
 const path = require("path");
@@ -26,18 +27,17 @@ function handleSquirrelEvent() {
             try {
                 spawnUpdate(["--createShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
             } catch (e) {}
-            spawnUpdate(["--processStart", exeName]);
-            setTimeout(() => process.exit(0), 1000);
+            app.quit();
             return true;
         case "--squirrel-uninstall":
             spawnUpdate(["--removeShortcut", exeName]);
             try {
                 spawnUpdate(["--removeShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
             } catch (e) {}
-            setTimeout(() => process.exit(0), 1000);
+            app.quit();
             return true;
         case "--squirrel-obsolete":
-            process.exit(0);
+            app.quit();
             return true;
         default:
             return false;
@@ -45,18 +45,15 @@ function handleSquirrelEvent() {
 }
 
 if (handleSquirrelEvent()) { return; }
-try {
-    if (process.env.NODE_ENV !== "development") {
-        const { updateElectronApp } = require("update-electron-app");
-        updateElectronApp({
-            updateInterval: "1 hour",
-            notifyUser: true,
-        });
-    }
-} catch (e) {
-    console.error("Failed to initialize updater:", e);
-}
-
+updateElectronApp({
+    updateSource: {
+        type: UpdateSourceType.StaticStorage,
+        baseUrl: `https://tools.losthq.rs/lostkit/${process.platform}/${process.arch}`,
+    },
+    updateInterval: '6 hours',
+    notifyUser: true,
+    logger: require('electron-log'),
+});
 let mainWindow;
 let primaryViews = [];
 let navView;

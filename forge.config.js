@@ -12,8 +12,7 @@ module.exports = {
     },
     rebuildConfig: {},
     makers: [
-        // Windows
-        {
+        {// Windows (Squirrel)
             name: '@electron-forge/maker-squirrel',
             config: {
                 setupIcon: 'src/assets/icon.ico',
@@ -22,13 +21,12 @@ module.exports = {
                 noMsi: true
             },
         },
-        // Universal
-        {
+        {// Zip (universal)
             name: '@electron-forge/maker-zip',
             config: {
                 bin: 'LostKit'
             }
-        }
+        },
     ],
     plugins: [
         {
@@ -45,15 +43,5 @@ module.exports = {
             [FuseV1Options.OnlyLoadAppFromAsar]: true,
         }),
     ],
-    publishers: [
-        {
-            name: '@electron-forge/publisher-github',
-            config: {
-                repository: {
-                    owner: 'LostHQ',
-                    name: 'LostKit-Electron'
-                }
-            }
-        }
-    ]
+    publishers: [],
 };
