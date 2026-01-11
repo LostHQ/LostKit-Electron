@@ -1,59 +1,50 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require("electron");
-const { updateElectronApp, UpdateSourceType } = require('update-electron-app')
+const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
 const version = require("../package.json").version;
 const author = require("../package.json").author;
 const path = require("path");
 const APP_TITLE = `LostKit v${version} - by ${author}`;
 
-function handleSquirrelEvent() {
-    if (process.platform !== "win32") return false;
-    const squirrelEvent = process.argv[1];
-    if (!squirrelEvent) return false;
-    const { spawn } = require("child_process");
-    const updateExe = path.resolve(process.execPath, "..", "..", "Update.exe");
-    const exeName = path.basename(process.execPath);
-    const spawnUpdate = (args) => {
-        try {
-            return spawn(updateExe, args, { detached: true, stdio: "ignore" });
-        } catch (e) {
-            return null;
-        }
-    };
+log.transports.file.level = 'info';
+autoUpdater.logger = log;
+autoUpdater.autoDownload = true;
 
-    switch (squirrelEvent) {
-        case "--squirrel-install":
-        case "--squirrel-updated":
-            spawnUpdate(["--createShortcut", exeName]);
-            try {
-                spawnUpdate(["--createShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
-            } catch (e) {}
-            app.quit();
-            return true;
-        case "--squirrel-uninstall":
-            spawnUpdate(["--removeShortcut", exeName]);
-            try {
-                spawnUpdate(["--removeShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
-            } catch (e) {}
-            app.quit();
-            return true;
-        case "--squirrel-obsolete":
-            app.quit();
-            return true;
-        default:
-            return false;
+autoUpdater.on('error', (err) => {
+    log.error('AutoUpdater error:', err == null ? "unknown" : (err.stack || err).toString());
+});
+autoUpdater.on('update-available', () => {
+    log.info('Update available');
+});
+autoUpdater.on('update-not-available', () => {
+    log.info('Update not available');
+});
+autoUpdater.on('update-downloaded', (info) => {
+    log.info('Update downloaded', info);
+    if (!mainWindow) return;
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'info',
+        buttons: ['Later', 'Restart and Install'],
+        defaultId: 1,
+        cancelId: 0,
+        title: 'Update ready',
+        message: 'A new version has been downloaded.',
+        detail: 'The app will restart to apply the update.',
+    });
+    if (choice === 1) {
+        try {
+            autoUpdater.quitAndInstall();
+        } catch (e) {
+            log.error('Failed to quit and install update', e);
+        }
     }
+});
+try {
+    autoUpdater.checkForUpdatesAndNotify();
+} catch (e) {
+    log.error('Update check failed', e);
 }
 
-if (handleSquirrelEvent()) { return; }
-updateElectronApp({
-    updateSource: {
-        type: UpdateSourceType.StaticStorage,
-        baseUrl: `https://tools.losthq.rs/lostkit/${process.platform}/${process.arch}`,
-    },
-    updateInterval: '6 hours',
-    notifyUser: true,
-    logger: require('electron-log'),
-});
 let mainWindow;
 let primaryViews = [];
 let navView;
