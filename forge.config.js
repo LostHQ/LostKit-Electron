@@ -7,19 +7,19 @@ module.exports = {
         icon: 'src/assets/icon.ico',
         outDir: 'out',
         win32metadata: {
-            ProductName: 'LostKit'
+            ProductName: 'LostKit 2 - by LostHQ Team'
         }
     },
     rebuildConfig: {},
     makers: [
-        // Windows
+        // Windows Squirrel Installer
         {
             name: '@electron-forge/maker-squirrel',
             config: {
                 setupIcon: 'src/assets/icon.ico'
             },
         },
-        // Universal
+        // Universal - Portable ZIP
         {
             name: '@electron-forge/maker-zip',
             config: {
@@ -38,8 +38,8 @@ module.exports = {
             [FuseV1Options.EnableCookieEncryption]: true,
             [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
             [FuseV1Options.EnableNodeCliInspectArguments]: false,
-            [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-            [FuseV1Options.OnlyLoadAppFromAsar]: true,
+            [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: false,
+            [FuseV1Options.OnlyLoadAppFromAsar]: false,
         }),
     ],
     publishers: [

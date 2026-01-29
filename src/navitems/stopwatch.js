@@ -1,7 +1,6 @@
 const { ipcRenderer } = require('electron');
 
 let currentMode = 'afk'; // 'afk', 'countdown', or 'stopwatch'
-let overlayOpen = false;
 let countdownTime = 90;
 let soundAlert = false;
 let soundVolume = 30;
@@ -16,7 +15,6 @@ const modeDisplay = document.getElementById('mode-display');
 const afkBtn = document.getElementById('afk-btn');
 const countdownBtn = document.getElementById('countdown-btn');
 const stopwatchBtn = document.getElementById('stopwatch-btn');
-const toggleOverlayBtn = document.getElementById('toggle-overlay-btn');
 const countdownSettings = document.getElementById('countdown-settings');
 const countdownTimeInput = document.getElementById('countdown-time');
 const soundAlertCheckbox = document.getElementById('sound-alert-checkbox');
@@ -30,13 +28,24 @@ const opacitySlider = document.getElementById('opacity-slider');
 const opacityValue = document.getElementById('opacity-value');
 const afkAutoCheckbox = document.getElementById('afk-auto-checkbox');
 
+// Stopwatch display elements
+const timerDisplay = document.getElementById('stopwatch-timer-display');
+const startBtn = document.getElementById('stopwatch-start-btn');
+const resetBtn = document.getElementById('stopwatch-reset-btn');
+
 // Audio context for test beep
 let audioContext = null;
+
+// Stopwatch state
+let seconds = 0;
+let interval = null;
+let running = false;
+let soundPlayed = false;
 
 function initAudio() {
     try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        console.log('Audio context initialized in panel');
+        console.log('Audio context initialized in stopwatch panel');
     } catch (e) {
         console.log('Web Audio API not supported:', e);
     }
@@ -67,67 +76,126 @@ function playTestBeep(volume) {
     }
 }
 
-// Check the current state of the overlay when the page loads
-ipcRenderer.send('check-stopwatch-overlay-state');
-ipcRenderer.on('stopwatch-overlay-state', (event, isOpen) => {
-    overlayOpen = isOpen;
-    updateOverlayButton();
+function playBeep() {
+    if (!soundAlert || !audioContext) return;
     
-    // If overlay is open, send current settings to it
-    if (isOpen) {
-        sendAllSettingsToOverlay();
+    try {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        
+        osc.frequency.setValueAtTime(800, audioContext.currentTime);
+        const vol = soundVolume / 100;
+        gain.gain.setValueAtTime(vol, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.3);
+        
+        console.log('Beep played at volume:', soundVolume);
+        setTimeout(() => { soundPlayed = false; }, 10000);
+        
+    } catch (e) {
+        console.log('Error playing beep:', e);
     }
-});
-
-// Listen for when overlay closes
-ipcRenderer.on('stopwatch-overlay-closed', () => {
-    overlayOpen = false;
-    updateOverlayButton();
-});
-
-// main-window-focused events are handled by main process for auto behavior
-
-// Update the overlay button text
-function updateOverlayButton() {
-    toggleOverlayBtn.textContent = overlayOpen ? 'Close Stopwatch Overlay' : 'Open Stopwatch Overlay';
 }
 
-// Send all current settings to overlay
-function sendAllSettingsToOverlay() {
-    // Send mode first
-    if (currentMode === 'afk') {
-        ipcRenderer.send('update-stopwatch-mode', 'afk', 90);
-    } else if (currentMode === 'countdown') {
-        ipcRenderer.send('update-stopwatch-mode', 'countdown', countdownTime);
+function formatTime(totalSeconds) {
+    const mins = Math.floor(Math.abs(totalSeconds) / 60);
+    const secs = Math.abs(totalSeconds) % 60;
+    const sign = totalSeconds < 0 ? '-' : '';
+    return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateDisplay() {
+    if (currentMode === 'afk' || currentMode === 'countdown') {
+        const remaining = (currentMode === 'afk' ? 90 : countdownTime) - seconds;
+        
+        if (remaining <= 0) {
+            timerDisplay.textContent = '00:00';
+            timerDisplay.classList.remove('flash-red');
+            timerDisplay.style.color = '#ff0000';
+            
+            if (autoLoop && running) {
+                seconds = 0;
+                soundPlayed = false;
+                timerDisplay.classList.remove('flash-red');
+                updateDisplay();
+                return;
+            }
+            
+            if (running) {
+                clearInterval(interval);
+                running = false;
+                startBtn.textContent = 'Start';
+            }
+            
+            soundPlayed = false;
+        } else {
+            timerDisplay.textContent = formatTime(remaining);
+            
+            if (remaining <= 10) {
+                timerDisplay.classList.add('flash-red');
+                
+                if (soundAlert && !soundPlayed) {
+                    playBeep();
+                    soundPlayed = true;
+                }
+            } else {
+                timerDisplay.classList.remove('flash-red');
+                timerDisplay.style.color = color;
+            }
+        }
+    } else if (currentMode === 'stopwatch') {
+        timerDisplay.textContent = formatTime(seconds);
+        timerDisplay.classList.remove('flash-red');
+        timerDisplay.style.color = color;
+        soundPlayed = false;
+    }
+}
+
+function tick() {
+    if (currentMode === 'afk' || currentMode === 'countdown') {
+        const maxTime = currentMode === 'afk' ? 90 : countdownTime;
+        if (seconds >= maxTime) return;
+    }
+    seconds++;
+    updateDisplay();
+}
+
+startBtn.addEventListener('click', () => {
+    if (running) {
+        clearInterval(interval);
+        startBtn.textContent = 'Start';
+        running = false;
     } else {
-        ipcRenderer.send('update-stopwatch-mode', 'stopwatch', 0);
+        if ((currentMode === 'afk' || currentMode === 'countdown') && seconds >= (currentMode === 'afk' ? 90 : countdownTime)) {
+            seconds = 0;
+            soundPlayed = false;
+        }
+        
+        interval = setInterval(tick, 1000);
+        startBtn.textContent = 'Pause';
+        running = true;
     }
-    
-    // Send all settings
-    ipcRenderer.send('update-stopwatch-setting', 'color', color);
-    ipcRenderer.send('update-stopwatch-setting', 'size', size);
-    ipcRenderer.send('update-stopwatch-setting', 'opacity', opacity);
-    ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
-    ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
-    ipcRenderer.send('update-stopwatch-setting', 'autoLoop', autoLoop);
-    
-    if (currentMode === 'countdown') {
-        ipcRenderer.send('update-stopwatch-setting', 'countdownTime', countdownTime);
-    }
-}
+});
 
-// Toggle overlay
-toggleOverlayBtn.addEventListener('click', () => {
-    overlayOpen = !overlayOpen;
-    ipcRenderer.send('toggle-stopwatch-overlay', overlayOpen);
-    updateOverlayButton();
+resetBtn.addEventListener('click', () => {
+    seconds = 0;
+    soundPlayed = false;
+    timerDisplay.classList.remove('flash-red');
     
-    // When opening overlay, send current settings after a short delay
-    if (overlayOpen) {
-        setTimeout(() => {
-            sendAllSettingsToOverlay();
-        }, 200);
+    if (running) {
+        clearInterval(interval);
+        interval = setInterval(tick, 1000);
+        startBtn.textContent = 'Pause';
+    } else {
+        startBtn.textContent = 'Start';
     }
+    
+    updateDisplay();
 });
 
 // Mode switching
@@ -139,23 +207,34 @@ function setMode(mode) {
     countdownBtn.classList.remove('active');
     stopwatchBtn.classList.remove('active');
     
+    // Stop timer when changing modes
+    if (running) {
+        clearInterval(interval);
+        running = false;
+        startBtn.textContent = 'Start';
+    }
+    
+    seconds = 0;
+    soundPlayed = false;
+    
     if (mode === 'afk') {
         afkBtn.classList.add('active');
         modeDisplay.textContent = 'Mode: AFK Timer (90s)';
         countdownSettings.style.display = 'none';
-        // Send mode update to main process
-        ipcRenderer.send('update-stopwatch-mode', 'afk', 90);
+        timerDisplay.textContent = '01:30';
+        timerDisplay.style.color = color;
     } else if (mode === 'countdown') {
         countdownBtn.classList.add('active');
         modeDisplay.textContent = `Mode: Countdown (${countdownTime}s)`;
         countdownSettings.style.display = 'block';
-        // Send the current countdown time immediately when switching to countdown mode
-        ipcRenderer.send('update-stopwatch-mode', 'countdown', countdownTime);
+        timerDisplay.textContent = formatTime(countdownTime);
+        timerDisplay.style.color = color;
     } else {
         stopwatchBtn.classList.add('active');
         modeDisplay.textContent = 'Mode: Timer (Count Up)';
         countdownSettings.style.display = 'none';
-        ipcRenderer.send('update-stopwatch-mode', 'stopwatch', 0);
+        timerDisplay.textContent = '00:00';
+        timerDisplay.style.color = color;
     }
 }
 
@@ -180,9 +259,9 @@ countdownTimeInput.addEventListener('input', () => {
     
     if (currentMode === 'countdown') {
         modeDisplay.textContent = `Mode: Countdown (${countdownTime}s)`;
-        // Send updates to overlay immediately as user types
-        ipcRenderer.send('update-stopwatch-mode', 'countdown', countdownTime);
-        ipcRenderer.send('update-stopwatch-setting', 'countdownTime', countdownTime);
+        if (!running) {
+            timerDisplay.textContent = formatTime(countdownTime);
+        }
     }
 });
 
@@ -203,21 +282,20 @@ countdownTimeInput.addEventListener('blur', () => {
     
     if (currentMode === 'countdown') {
         modeDisplay.textContent = `Mode: Countdown (${countdownTime}s)`;
-        ipcRenderer.send('update-stopwatch-mode', 'countdown', countdownTime);
-        ipcRenderer.send('update-stopwatch-setting', 'countdownTime', countdownTime);
+        if (!running) {
+            timerDisplay.textContent = formatTime(countdownTime);
+        }
     }
 });
 
 // Sound alert checkbox
 soundAlertCheckbox.addEventListener('change', () => {
     soundAlert = soundAlertCheckbox.checked;
-    ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
 });
 
 // Auto-loop checkbox
 autoLoopCheckbox.addEventListener('change', () => {
     autoLoop = autoLoopCheckbox.checked;
-    ipcRenderer.send('update-stopwatch-setting', 'autoLoop', autoLoop);
 });
 
 // AFK Auto checkbox
@@ -236,28 +314,29 @@ volumeSlider.addEventListener('input', (e) => {
 // Play test beep and send volume setting when user releases the volume slider
 volumeSlider.addEventListener('change', (e) => {
     soundVolume = parseInt(e.target.value);
-    ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
     playTestBeep(soundVolume);
 });
 
 // Color picker
 colorPicker.addEventListener('input', (e) => {
     color = e.target.value;
-    ipcRenderer.send('update-stopwatch-setting', 'color', color);
+    if (!timerDisplay.classList.contains('flash-red')) {
+        timerDisplay.style.color = color;
+    }
 });
 
 // Size slider
 sizeSlider.addEventListener('input', (e) => {
     size = parseInt(e.target.value);
     sizeValue.textContent = `${size}px`;
-    ipcRenderer.send('update-stopwatch-setting', 'size', size);
+    timerDisplay.style.fontSize = size + 'px';
 });
 
 // Opacity slider
 opacitySlider.addEventListener('input', (e) => {
     opacity = parseInt(e.target.value);
     opacityValue.textContent = `${opacity}%`;
-    ipcRenderer.send('update-stopwatch-setting', 'opacity', opacity);
+    timerDisplay.style.opacity = opacity / 100;
 });
 
 // Initialize
@@ -273,9 +352,55 @@ volumeSlider.value = soundVolume;
 volumeValue.textContent = `${soundVolume}%`;
 afkAutoCheckbox.checked = afkAuto;
 
+// Apply initial styling
+timerDisplay.style.fontSize = size + 'px';
+timerDisplay.style.opacity = opacity / 100;
+
 // Inform main process of current AFK Auto setting on load so auto behavior works
 ipcRenderer.send('update-stopwatch-setting', 'afkAuto', afkAuto);
 console.log('nav panel: initial afkAuto sent ->', afkAuto);
+
+// Listen for AFK auto-start signal from main process (when window loses focus or is minimized)
+ipcRenderer.on('afk-auto-start', () => {
+    console.log('Received afk-auto-start signal, currentMode:', currentMode);
+    
+    // Only auto-start if we're in AFK mode
+    if (currentMode === 'afk') {
+        console.log('Starting AFK timer automatically');
+        
+        // Reset and start the timer
+        seconds = 0;
+        soundPlayed = false;
+        timerDisplay.classList.remove('flash-red');
+        
+        // Start the interval
+        if (running) {
+            clearInterval(interval);
+        }
+        interval = setInterval(tick, 1000);
+        running = true;
+        startBtn.textContent = 'Pause';
+        updateDisplay();
+    }
+});
+
+// Listen for AFK auto-stop signal from main process (when window regains focus)
+ipcRenderer.on('afk-auto-stop', () => {
+    console.log('Received afk-auto-stop signal');
+    
+    // Stop the timer if running
+    if (running) {
+        clearInterval(interval);
+        running = false;
+        startBtn.textContent = 'Start';
+    }
+    
+    // Reset the timer
+    seconds = 0;
+    soundPlayed = false;
+    timerDisplay.classList.remove('flash-red');
+    updateDisplay();
+});
 
 // Back button function
 function goBack() {
