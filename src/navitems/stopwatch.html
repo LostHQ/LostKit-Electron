@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <style>
+        #stopwatch-display-container {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #666;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            text-align: center;
+        }
+
+        #stopwatch-timer-display {
+            font-family: 'RS-Bold', monospace;
+            font-size: 48px;
+            font-weight: bold;
+            color: #00ff00;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9), -1px -1px 2px rgba(0, 0, 0, 0.5);
+            letter-spacing: 2px;
+            margin: 0 0 10px 0;
+            transition: all 0.3s ease;
+        }
+
+        #stopwatch-timer-display.flash-red {
+            animation: flashRed 0.5s ease-in-out infinite;
+        }
+
+        @keyframes flashRed {
+            0%, 100% { color: #ff0000; }
+            50% { color: #ff6666; }
+        }
+
+        #stopwatch-control-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        #stopwatch-control-buttons button {
+            flex: 1;
+            padding: 8px 12px;
+            background: url('../assets/button.jpg') repeat;
+            background-size: cover;
+            border: 2px outset #8b6914;
+            border-radius: 4px;
+            color: #f0e68c;
+            font-weight: bold;
+            font-size: 12px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+
+        #stopwatch-control-buttons button:hover {
+            border: 2px inset #8b6914;
+            background-color: rgba(139, 105, 20, 0.3);
+            transform: translateY(1px);
+        }
+
+        #stopwatch-control-buttons button:active {
+            border: 2px inset #8b6914;
+            transform: translateY(2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="nav stopwatch-panel">
+        <div class="nav-button special-link" onclick="goBack()">
+            <img src="../assets/back.png" class="nav-icon">
+            <span>Back</span>
+        </div>
+
+        <div class="mode-indicator" id="mode-display">Mode: AFK Timer (90s)</div>
+
+        <div class="mode-selector">
+            <button id="afk-btn" class="mode-btn active" onclick="setMode('afk')">AFK (90s)</button>
+            <button id="countdown-btn" class="mode-btn" onclick="setMode('countdown')">Countdown</button>
+            <button id="stopwatch-btn" class="mode-btn" onclick="setMode('stopwatch')">Timer</button>
+        </div>
+
+        <!-- Stopwatch Display Section -->
+        <div id="stopwatch-display-container">
+            <div id="stopwatch-timer-display">01:30</div>
+            <div id="stopwatch-control-buttons">
+                <button id="stopwatch-start-btn">Start</button>
+                <button id="stopwatch-reset-btn">Reset</button>
+            </div>
+        </div>
+
+        <div class="panel-section section-spacing" id="countdown-settings" style="display: none;">
+            <div class="section-title">Countdown Settings</div>
+
+            <div class="setting-row">
+                <label>Set Time:</label>
+                <input type="number" id="countdown-time" min="1" max="999" value="90">
+                <span style="font-family: 'RS-Plain', sans-serif;">seconds</span>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">Notifications</div>
+
+            <div class="setting-row">
+                <label>Sound Alert:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="sound-alert-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Beep at 10 seconds</span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <label>Volume:</label>
+                <input type="range" id="volume-slider" min="0" max="100" value="30" step="5">
+                <span class="range-value" id="volume-value">30%</span>
+            </div>
+
+            <div class="setting-row">
+                <label>Auto-Loop:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="auto-loop-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Restart timer automatically</span>
+                </label>
+            </div>
+            <div class="setting-row">
+                <label>Auto:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="afk-auto-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Start AFK when LostKit unfocused</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <div class="section-title">Appearance</div>
+
+            <div class="setting-row">
+                <label>Color:</label>
+                <input type="color" id="color-picker" value="#00ff00">
+            </div>
+
+            <div class="setting-row">
+                <label>Size:</label>
+                <input type="range" id="size-slider" min="24" max="120" value="48" step="4">
+                <span class="range-value" id="size-value">48px</span>
+            </div>
+
+            <div class="setting-row">
+                <label>Opacity:</label>
+                <input type="range" id="opacity-slider" min="30" max="100" value="100" step="5">
+                <span class="range-value" id="opacity-value">100%</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="stopwatch.js"></script>
+</body>
+</html>

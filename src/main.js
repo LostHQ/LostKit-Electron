@@ -1,9 +1,16 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require("electron");
-const { updateElectronApp, UpdateSourceType } = require('update-electron-app')
+const {
+    app,
+    BrowserWindow,
+    WebContentsView,
+    ipcMain,
+    dialog,
+    shell,
+} = require("electron");
+const { updateElectronApp, UpdateSourceType } = require("update-electron-app");
 const version = require("../package.json").version;
 const author = require("../package.json").author;
 const path = require("path");
-const APP_TITLE = `LostKit v${version} - by ${author}`;
+const APP_TITLE = `LostKit 2 - by ${author} (${version})`;
 
 function handleSquirrelEvent() {
     if (process.platform !== "win32") return false;
@@ -25,14 +32,24 @@ function handleSquirrelEvent() {
         case "--squirrel-updated":
             spawnUpdate(["--createShortcut", exeName]);
             try {
-                spawnUpdate(["--createShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
+                spawnUpdate([
+                    "--createShortcut",
+                    exeName,
+                    "--shortcut-locations",
+                    "StartMenu,Desktop",
+                ]);
             } catch (e) {}
             app.quit();
             return true;
         case "--squirrel-uninstall":
             spawnUpdate(["--removeShortcut", exeName]);
             try {
-                spawnUpdate(["--removeShortcut", exeName, "--shortcut-locations", "StartMenu,Desktop"]);
+                spawnUpdate([
+                    "--removeShortcut",
+                    exeName,
+                    "--shortcut-locations",
+                    "StartMenu,Desktop",
+                ]);
             } catch (e) {}
             app.quit();
             return true;
@@ -44,17 +61,20 @@ function handleSquirrelEvent() {
     }
 }
 
-if (handleSquirrelEvent()) { return; }
+if (handleSquirrelEvent()) {
+    return;
+}
 updateElectronApp({
     updateSource: {
         type: UpdateSourceType.StaticStorage,
         baseUrl: `https://tools.losthq.rs/lostkit/${process.platform}/${process.arch}`,
     },
-    updateInterval: '6 hours',
+    updateInterval: "6 hours",
     notifyUser: true,
-    logger: require('electron-log'),
+    logger: require("electron-log"),
 });
 let mainWindow;
+let afkAuto = false;
 let primaryViews = [];
 let navView;
 let chatView;
@@ -70,7 +90,7 @@ let tabByUrl = new Map([
 ]);
 let externalWindowsByUrl = new Map();
 let currentTab = "main";
-let chatVisible = false;
+let chatVisible = true;
 let chatHeightValue = 300;
 
 function updateBounds() {
@@ -109,8 +129,8 @@ function updateBounds() {
 
 app.whenReady().then(() => {
     mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
+        width: 1100,
+        height: 920,
         autoHideMenuBar: true,
         title: APP_TITLE,
         webPreferences: {
@@ -146,7 +166,7 @@ app.whenReady().then(() => {
         return { action: "deny" };
     });
     mainWindow.contentView.addChildView(chatView);
-    chatView.setVisible(false);
+    chatView.setVisible(true);
 
     const mainView = new WebContentsView({
         webPreferences: {
@@ -171,6 +191,100 @@ app.whenReady().then(() => {
 
     mainWindow.on("resize", () => {
         updateBounds();
+    });
+
+    // Stopwatch IPC handlers
+    ipcMain.on("update-stopwatch-setting", (event, setting, value) => {
+        console.log(
+            "ipcMain received update-stopwatch-setting",
+            setting,
+            value,
+        );
+        if (setting === "afkAuto") {
+            afkAuto = !!value;
+            console.log("afkAuto set to", afkAuto);
+        }
+    });
+
+    mainWindow.on("focus", () => {
+        console.log("mainWindow focused — afkAuto:", afkAuto);
+        // When LostKit regains focus, stop and reset the AFK timer
+        if (navView && navView.webContents) {
+            navView.webContents.send("afk-auto-stop");
+        }
+    });
+
+    mainWindow.on("blur", () => {
+        console.log("mainWindow blurred — afkAuto:", afkAuto);
+        // When LostKit loses focus, auto-start AFK timer if afkAuto enabled
+        if (afkAuto) {
+            console.log("AFK auto-trigger: starting AFK countdown");
+            if (navView && navView.webContents) {
+                navView.webContents.send("afk-auto-start");
+            }
+        }
+    });
+
+    mainWindow.on("minimize", () => {
+        console.log("mainWindow minimized — afkAuto:", afkAuto);
+        // When LostKit is minimized, auto-start AFK timer if afkAuto enabled
+        if (afkAuto) {
+            console.log("AFK auto-trigger: starting AFK countdown");
+            if (navView && navView.webContents) {
+                navView.webContents.send("afk-auto-start");
+            }
+        }
+    });
+
+    mainWindow.on("restore", () => {
+        console.log("mainWindow restored");
+    });
+
+    // Stopwatch IPC handlers
+    ipcMain.on("update-stopwatch-setting", (event, setting, value) => {
+        console.log(
+            "ipcMain received update-stopwatch-setting",
+            setting,
+            value,
+        );
+        if (setting === "afkAuto") {
+            afkAuto = !!value;
+            console.log("afkAuto set to", afkAuto);
+        }
+    });
+
+    mainWindow.on("focus", () => {
+        console.log("mainWindow focused — afkAuto:", afkAuto);
+        // When LostKit regains focus, stop and reset the AFK timer
+        if (navView && navView.webContents) {
+            navView.webContents.send("afk-auto-stop");
+        }
+    });
+
+    mainWindow.on("blur", () => {
+        console.log("mainWindow blurred — afkAuto:", afkAuto);
+        // When LostKit loses focus, auto-start AFK timer if afkAuto enabled
+        if (afkAuto) {
+            console.log("AFK auto-trigger: starting AFK countdown");
+            if (navView && navView.webContents) {
+                navView.webContents.send("afk-auto-start");
+            }
+        }
+    });
+
+    mainWindow.on("minimize", () => {
+        console.log("mainWindow minimized — afkAuto:", afkAuto);
+        // When LostKit is minimized, auto-start AFK timer if afkAuto enabled
+        if (afkAuto) {
+            console.log("AFK auto-trigger: starting AFK countdown");
+            if (navView && navView.webContents) {
+                navView.webContents.send("afk-auto-start");
+            }
+        }
+    });
+
+    mainWindow.on("restore", () => {
+        console.log("mainWindow restored");
     });
 
     ipcMain.on("toggle-chat", () => {
@@ -272,6 +386,11 @@ app.whenReady().then(() => {
             case "hiscores":
                 navView.webContents.loadFile(
                     path.join(__dirname, "/navitems/hiscores.html"),
+                );
+                break;
+            case "stopwatch":
+                navView.webContents.loadFile(
+                    path.join(__dirname, "/navitems/stopwatch.html"),
                 );
                 break;
             case "nav":

@@ -13,6 +13,10 @@
             <img src="assets/chat.png" class="nav-icon">
             <span>Chat</span>
         </div>
+        <div class="nav-button special-link" onclick="openNav('stopwatch')">
+            <img src="assets/watch.png" class="nav-icon" onerror="this.style.display='none'">
+            <span>Stopwatch</span>
+        </div>
         <div class="nav-button special-link" onclick="openNav('hiscores')">
             <img src="assets/hiscores.png" class="nav-icon">
             <span>Hiscores</span>
@@ -25,7 +29,7 @@
             <img src="assets/coordinates.png" class="nav-icon">
             <span>Coordinates</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://razgals.github.io/Treasure/' data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure/', 'Clue Help')">
+        <div class="nav-button link" data-url='https://razgals.github.io/Treasure-V2/' data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure-V2/', 'Clue Help')">
             <img src="assets/cluehelp.png" class="nav-icon">
             <span>Clue Help</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
