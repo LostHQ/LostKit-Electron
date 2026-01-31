@@ -47,13 +47,14 @@ function saveSettingsDebounced() {
 // Configure logging
 log.transports.file.level = 'info';
 
-// Version check URL (raw GitHub - no rate limits)
+// Version check URL (raw GitHub - no rate limits, with cache busting)
 const VERSION_CHECK_URL = 'https://raw.githubusercontent.com/LostHQ/LostKit-Electron/main/version.json';
 
 async function checkForUpdates() {
   try {
     log.info('Checking for updates...');
-    const response = await fetch(VERSION_CHECK_URL);
+    // Add timestamp to bust GitHub's CDN cache
+    const response = await fetch(VERSION_CHECK_URL + '?t=' + Date.now());
     if (!response.ok) {
       log.info('Version check failed: server returned', response.status);
       return;
