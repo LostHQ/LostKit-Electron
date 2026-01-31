@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    @font-face {
+      font-family: 'RS-Bold';
+      src: url('assets/fonts/RuneScape-Bold-12.otf') format('opentype');
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent;
+      overflow: hidden;
+      font-family: 'RS-Bold', monospace;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: move;
+    }
+
+    #container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 5px;
+      width: 100%;
+      height: 100%;
+    }
+
+    #timer {
+      font-size: 48px;
+      font-weight: bold;
+      color: #00ff00;
+      text-shadow: 
+        2px 2px 4px rgba(0, 0, 0, 0.9),
+        -1px -1px 2px rgba(0, 0, 0, 0.5);
+      letter-spacing: 2px;
+      text-align: center;
+      transition: all 0.3s ease;
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+
+    #timer.flash-red {
+      animation: flashRed 0.5s ease-in-out infinite;
+    }
+
+    @keyframes flashRed {
+      0%, 100% {
+        color: #ff0000;
+      }
+      50% {
+        color: #ff6666;
+      }
+    }
+
+    #controls {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      -webkit-app-region: no-drag;
+      cursor: default;
+    }
+
+    #controls:hover {
+      opacity: 1;
+    }
+
+    button {
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid #666;
+      color: #fff;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 10px;
+      font-family: 'RS-Bold', monospace;
+      border-radius: 3px;
+      transition: all 0.1s;
+      -webkit-app-region: no-drag;
+    }
+
+    button:hover {
+      background: rgba(0, 0, 0, 0.9);
+      border-color: #888;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div id="timer">01:30</div>
+    <div id="controls">
+      <button id="start-btn">Start</button>
+      <button id="reset-btn">Reset</button>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    let seconds = 0;
+    let interval = null;
+    let running = false;
+    let mode = 'afk'; // 'afk', 'countdown', or 'stopwatch'
+    let targetTime = 90; // For AFK mode
+    let customTime = 90; // For countdown mode
+    let mainWindowFocused = true;
+    let soundAlertEnabled = false;
+    let soundVolume = 30; // Volume percentage (0-100)
+    let autoLoop = false; // Auto-restart countdown/AFK timer
+    let soundPlayed = false;
+    let audioContext = null;
+    let beepOscillator = null;
+    let beepGain = null;
+    let userDragging = false;
+
+    const timerEl = document.getElementById('timer');
+    const startBtn = document.getElementById('start-btn');
+    const resetBtn = document.getElementById('reset-btn');
+
+    let currentColor = '#00ff00';
+    let currentSize = 48;
+    let currentOpacity = 100;
+
+    // Initialize Web Audio API for beep sound
+    function initAudio() {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log('Audio context initialized');
+      } catch (e) {
+        console.log('Web Audio API not supported:', e);
+      }
+    }
+
+    // Play beep sound
+    function playBeep() {
+      if (!soundAlertEnabled || !audioContext) return;
+      
+      try {
+        if (beepOscillator) {
+          beepOscillator.stop();
+          beepOscillator.disconnect();
+        }
+        
+        if (beepGain) {
+          beepGain.disconnect();
+        }
+        
+        beepOscillator = audioContext.createOscillator();
+        beepGain = audioContext.createGain();
+        
+        beepOscillator.connect(beepGain);
+        beepGain.connect(audioContext.destination);
+        
+        beepOscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        const volume = soundVolume / 100;
+        beepGain.gain.setValueAtTime(volume, audioContext.currentTime);
+        beepGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        beepOscillator.start();
+        beepOscillator.stop(audioContext.currentTime + 0.3);
+        
+        console.log('Beep sound played at volume:', soundVolume);
+        
+        // Reset sound flag after 10 seconds
+        setTimeout(() => {
+          soundPlayed = false;
+        }, 10000);
+        
+      } catch (e) {
+        console.log('Error playing beep:', e);
+      }
+    }
+
+    // Make window draggable
+    document.addEventListener('mousedown', (e) => {
+      if (e.target === timerEl || e.target === document.body || e.target.id === 'container') {
+        userDragging = true;
+        try { ipcRenderer.send('overlay-interacting', true); } catch (e) {}
+        const { remote } = require('electron');
+        const win = remote.getCurrentWindow();
+        const { screenX, screenY } = e;
+        const { x, y } = win.getBounds();
+
+        const onMouseMove = (moveEvent) => {
+          const newX = moveEvent.screenX - (screenX - x);
+          const newY = moveEvent.screenY - (screenY - y);
+          win.setPosition(newX, newY);
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          setTimeout(() => { userDragging = false; try { ipcRenderer.send('overlay-interacting', false); } catch (e) {} }, 100);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      }
+    });
+
+    // Notify main when window minimize/restore events occur (main also listens on BrowserWindow)
+    try {
+      const { remote } = require('electron');
+      const win = remote.getCurrentWindow();
+      win.on('minimize', () => {
+        ipcRenderer.send('stopwatch-minimized');
+      });
+      win.on('restore', () => {
+        ipcRenderer.send('stopwatch-restored');
+      });
+    } catch (e) {
+      // ignore if remote not available
+    }
+
+    // Function to auto-resize window based on content
+    function resizeWindow() {
+      if (userDragging) return;
+      const rect = timerEl.getBoundingClientRect();
+      const width = Math.max(160, rect.width + 15);
+      const height = Math.max(75, rect.height + 45);
+      ipcRenderer.send('resize-stopwatch-window', Math.ceil(width), Math.ceil(height));
+    }
+
+    function formatTime(totalSeconds) {
+      const mins = Math.floor(Math.abs(totalSeconds) / 60);
+      const secs = Math.abs(totalSeconds) % 60;
+      const sign = totalSeconds < 0 ? '-' : '';
+      return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function updateDisplay() {
+      if (mode === 'afk' || mode === 'countdown') {
+        const remaining = (mode === 'afk' ? 90 : customTime) - seconds;
+        
+        if (remaining <= 0) {
+          // Timer finished
+          timerEl.textContent = '00:00';
+          timerEl.classList.remove('flash-red');
+          timerEl.style.color = '#ff0000';
+          
+          // If auto-loop is enabled, restart the timer
+          if (autoLoop && running) {
+            seconds = 0;
+            soundPlayed = false;
+            timerEl.classList.remove('flash-red');
+            updateDisplay();
+            return;
+          }
+          
+          // Stop the timer
+          if (running) {
+            clearInterval(interval);
+            running = false;
+            startBtn.textContent = 'Start';
+          }
+          
+          // Reset sound flag
+          soundPlayed = false;
+        } else {
+          timerEl.textContent = formatTime(remaining);
+          
+          // Flash red and play sound at 10 seconds and below
+          if (remaining <= 10) {
+            timerEl.classList.add('flash-red');
+            
+            // Play sound once if enabled
+            if (soundAlertEnabled && !soundPlayed) {
+              playBeep();
+              soundPlayed = true;
+            }
+          } else {
+            timerEl.classList.remove('flash-red');
+            timerEl.style.color = currentColor;
+          }
+        }
+      } else if (mode === 'stopwatch') {
+        // Stopwatch mode (timer counting up from 0:00 to infinite)
+        timerEl.textContent = formatTime(seconds);
+        timerEl.classList.remove('flash-red');
+        timerEl.style.color = currentColor;
+        soundPlayed = false;
+      }
+    }
+
+    function tick() {
+      if (mode === 'afk' || mode === 'countdown') {
+        const maxTime = mode === 'afk' ? 90 : customTime;
+        if (seconds >= maxTime) {
+          // Already at or past the target time
+          return;
+        }
+      }
+      // In stopwatch mode, just keep counting up infinitely
+      seconds++;
+      updateDisplay();
+    }
+
+    startBtn.addEventListener('click', () => {
+      if (running) {
+        clearInterval(interval);
+        startBtn.textContent = 'Start';
+        running = false;
+      } else {
+        // If timer is already finished (at 0), reset it first
+        if ((mode === 'afk' || mode === 'countdown') && seconds >= (mode === 'afk' ? 90 : customTime)) {
+          seconds = 0;
+          soundPlayed = false;
+        }
+        
+        interval = setInterval(tick, 1000);
+        startBtn.textContent = 'Pause';
+        running = true;
+      }
+    });
+
+    resetBtn.addEventListener('click', () => {
+      seconds = 0;
+      soundPlayed = false;
+      timerEl.classList.remove('flash-red');
+      
+      // If timer was running, restart it
+      if (running) {
+        clearInterval(interval);
+        interval = setInterval(tick, 1000);
+        startBtn.textContent = 'Pause';
+      } else {
+        startBtn.textContent = 'Start';
+      }
+      
+      updateDisplay();
+    });
+
+    // Listen for mode updates from panel
+    ipcRenderer.on('update-mode', (event, newMode, newTime) => {
+      mode = newMode;
+      timerEl.classList.remove('flash-red');
+      
+      // Reset seconds to 0 for all modes
+      seconds = 0;
+      soundPlayed = false;
+      
+      // Stop current timer
+      if (running) {
+        clearInterval(interval);
+        startBtn.textContent = 'Start';
+        running = false;
+      }
+      
+      if (mode === 'afk') {
+        targetTime = 90;
+        timerEl.textContent = '01:30';
+        timerEl.style.color = currentColor;
+      } else if (mode === 'countdown') {
+        customTime = newTime || 90;
+        timerEl.textContent = formatTime(customTime);
+        timerEl.style.color = currentColor;
+      } else {
+        // Stopwatch mode - start at 00:00
+        timerEl.textContent = '00:00';
+        timerEl.style.color = currentColor;
+      }
+      
+      // Resize window after mode change
+      setTimeout(resizeWindow, 100);
+    });
+
+    // Listen for setting updates from panel
+    ipcRenderer.on('update-setting', (event, setting, value) => {
+      if (setting === 'color') {
+        currentColor = value;
+        if (!timerEl.classList.contains('flash-red')) {
+          timerEl.style.color = currentColor;
+        }
+      } else if (setting === 'size') {
+        currentSize = value;
+        timerEl.style.fontSize = currentSize + 'px';
+        // Don't resize window on size changes
+      } else if (setting === 'opacity') {
+        currentOpacity = value;
+        timerEl.style.opacity = currentOpacity / 100;
+      } else if (setting === 'countdownTime') {
+        customTime = value;
+        if (mode === 'countdown') {
+          if (!running) {
+            timerEl.textContent = formatTime(customTime);
+          }
+          updateDisplay();
+        }
+      } else if (setting === 'soundAlert') {
+        soundAlertEnabled = value;
+        console.log('Sound alert set to:', soundAlertEnabled);
+        if (value && !audioContext) {
+          initAudio();
+        }
+      } else if (setting === 'soundVolume') {
+        soundVolume = value;
+        console.log('Sound volume set to:', soundVolume);
+      } else if (setting === 'autoLoop') {
+        autoLoop = value;
+        console.log('Auto-loop set to:', autoLoop);
+      }
+      else if (setting === 'start') {
+        // External command to start the AFK countdown immediately
+        if (value === true && mode === 'afk') {
+          console.log('overlay received start command; mode=', mode, 'running=', running, 'seconds=', seconds);
+          try { ipcRenderer.send('overlay-log', `received start; mode=${mode} running=${running} seconds=${seconds}`); } catch (e) {}
+          if (soundAlertEnabled && !audioContext) initAudio();
+          seconds = 0;
+          soundPlayed = false;
+          if (running) {
+            clearInterval(interval);
+          }
+          interval = setInterval(tick, 1000);
+          console.log('overlay starting interval');
+          try { ipcRenderer.send('overlay-log', 'starting interval'); } catch (e) {}
+          running = true;
+          startBtn.textContent = 'Pause';
+          updateDisplay();
+        }
+      }
+    });
+
+    // Listen for main window focus changes
+    ipcRenderer.on('main-window-focused', (event, focused) => {
+      mainWindowFocused = focused;
+      updateDisplay();
+    });
+
+    // Close overlay when Escape key is pressed
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        clearInterval(interval);
+        running = false;
+        soundPlayed = false;
+        timerEl.classList.remove('flash-red');
+        const { remote } = require('electron');
+        remote.getCurrentWindow().close();
+      }
+    });
+
+    // Minimize button removed to avoid separate taskbar entry; overlay minimization
+    // is handled by the OS or programmatically via the nav panel.
+
+    // Initial setup
+    // Set initial compact size
+    ipcRenderer.send('resize-stopwatch-window', 160, 75);
+    
+    // Initialize audio context immediately if sound is enabled
+    setTimeout(() => {
+      if (soundAlertEnabled) {
+        initAudio();
+      }
+    }, 500);
+    
+    updateDisplay();
+  </script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 12px;
+            font-family: 'RS-Quill', monospace;
+            background: #222222;
+            color: #f0e68c;
+            width: 400px;
+        }
+
+        @font-face {
+            font-family: 'RS-Quill';
+            src: url('../assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+        }
+
+        .title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .sound-item {
+            padding: 8px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 3px;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .sound-item:hover {
+            background: #3a3a3a;
+            border-color: #8b6914;
+        }
+
+        .sound-item.active {
+            background: #3a5a3a;
+            border-color: #4CAF50;
+        }
+
+        .sound-item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sound-item-play {
+            padding: 4px 8px;
+            background: #228b22;
+            border: 1px solid #00c000;
+            border-radius: 2px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 9px;
+            transition: all 0.15s;
+            min-width: 35px;
+            text-align: center;
+        }
+
+        .sound-item-play:hover {
+            background: #00c000;
+            border-color: #00ff00;
+        }
+
+        .sound-item-delete {
+            padding: 4px 8px;
+            background: #8b2222;
+            border: 1px solid #c00;
+            border-radius: 2px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 9px;
+            transition: all 0.15s;
+        }
+
+        .sound-item-delete:hover {
+            background: #c00;
+            border-color: #f00;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        button {
+            flex: 1;
+            padding: 8px;
+            background: url('../assets/button.jpg') repeat;
+            background-size: cover;
+            border: 2px outset #8b6914;
+            border-radius: 3px;
+            color: #f0e68c;
+            font-weight: bold;
+            font-size: 12px;
+            font-family: 'RS-Quill', monospace;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+
+        button:hover {
+            border: 2px inset #8b6914;
+            background-color: rgba(139, 105, 20, 0.3);
+            transform: translateY(1px);
+        }
+
+        button:active {
+            border: 2px inset #8b6914;
+            transform: translateY(2px);
+        }
+
+        #sound-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        #sound-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #sound-list::-webkit-scrollbar-track {
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+
+        #sound-list::-webkit-scrollbar-thumb {
+            background: #8b6914;
+            border-radius: 4px;
+        }
+
+        #sound-list::-webkit-scrollbar-thumb:hover {
+            background: #a0821a;
+        }
+
+        #add-sound-input {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">Sound Manager</div>
+    
+    <div class="button-group">
+        <button onclick="document.getElementById('add-sound-input').click();">Add Sound</button>
+    </div>
+
+    <div id="sound-list"></div>
+
+    <input type="file" id="add-sound-input" accept="audio/*">
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        const fs = require('fs');
+        const path = require('path');
+
+        let soundsDir = '';
+        let customSoundPath = '';
+        let userVolume = 60; // Default, will be updated from config
+        let soundAlert = false; // Default, will be updated from config
+
+        // Get config from main process
+        ipcRenderer.invoke('get-sounds-config').then((config) => {
+            soundsDir = path.normalize(config.soundsDir);
+            customSoundPath = config.customSoundPath ? path.normalize(config.customSoundPath) : ''; // Load selected sound
+            userVolume = config.userVolume || 60; // Load user's volume setting
+            soundAlert = config.soundAlert || false; // Load sound alert setting
+            console.log('Sound manager config loaded:', {customSoundPath, userVolume, soundAlert, soundsDir});
+            refreshSoundList();
+        });
+
+        function refreshSoundList() {
+            ipcRenderer.invoke('list-sound-files', soundsDir).then((files) => {
+                const soundList = document.getElementById('sound-list');
+                soundList.innerHTML = '';
+
+                // Normalize customSoundPath for comparison
+                const normalizedCustomPath = customSoundPath ? path.normalize(customSoundPath) : '';
+
+                // Add "Default (No Sound)" option
+                const defaultBtn = document.createElement('div');
+                defaultBtn.className = 'sound-item' + (customSoundPath === '' ? ' active' : '');
+                defaultBtn.innerHTML = '<span class="sound-item-name">Default (No Sound)</span>';
+                defaultBtn.onclick = () => {
+                    customSoundPath = '';
+                    ipcRenderer.send('select-sound', '');
+                    refreshSoundList();
+                };
+                soundList.appendChild(defaultBtn);
+
+                // Add available sound files
+                files.forEach(file => {
+                    const fullPath = path.normalize(path.join(soundsDir, file));
+                    const isActive = normalizedCustomPath === fullPath;
+
+                    const btn = document.createElement('div');
+                    btn.className = 'sound-item' + (isActive ? ' active' : '');
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'sound-item-name';
+                    nameSpan.textContent = file;
+                    btn.appendChild(nameSpan);
+
+                    const playBtn = document.createElement('button');
+                    playBtn.className = 'sound-item-play';
+                    playBtn.textContent = '▶';
+                    playBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        playSoundPreview(fullPath);
+                    };
+                    btn.appendChild(playBtn);
+
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'sound-item-delete';
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        deleteSoundFile(file, fullPath);
+                    };
+                    btn.appendChild(deleteBtn);
+
+                    btn.onclick = () => {
+                        customSoundPath = fullPath;
+                        ipcRenderer.send('select-sound', fullPath);
+                        refreshSoundList();
+                    };
+
+                    soundList.appendChild(btn);
+                });
+            }).catch(err => console.log('Error refreshing sound list:', err));
+        }
+
+        function playSoundPreview(filePath) {
+            try {
+                const audio = new Audio(`file://${filePath}`);
+                audio.volume = userVolume / 100; // Use user's actual volume setting
+                audio.play().catch(err => console.log('Play failed:', err));
+            } catch (err) {
+                console.log('Error playing sound preview:', err);
+            }
+        }
+
+        function deleteSoundFile(fileName, filePath) {
+            if (confirm(`Delete "${fileName}"?`)) {
+                ipcRenderer.invoke('delete-sound-file', filePath).then((success) => {
+                    if (success) {
+                        console.log('Sound file deleted:', filePath);
+                        const normalizedPath = path.normalize(filePath);
+                        const normalizedCustomPath = customSoundPath ? path.normalize(customSoundPath) : '';
+                        if (normalizedCustomPath === normalizedPath) {
+                            customSoundPath = '';
+                            ipcRenderer.send('select-sound', '');
+                        }
+                        refreshSoundList();
+                    }
+                }).catch(err => console.log('Error deleting sound file:', err));
+            }
+        }
+
+        // Handle adding new sound
+        document.getElementById('add-sound-input').addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const selectedFile = files[0];
+                const fileName = selectedFile.name;
+                // Save with original filename so user knows what sound it is
+                const destPath = path.join(soundsDir, fileName);
+
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const buffer = Buffer.from(event.target.result);
+                    ipcRenderer.invoke('copy-sound-file', buffer, destPath).then((success) => {
+                        if (success) {
+                            customSoundPath = destPath;
+                            ipcRenderer.send('select-sound', destPath);
+                            refreshSoundList();
+                            console.log('Sound file added:', destPath);
+                        }
+                    }).catch(err => console.log('Error adding sound file:', err));
+                };
+                reader.readAsArrayBuffer(selectedFile);
+
+                // Reset input
+                e.target.value = '';
+            }
+        });
+
+        // Listen for updates from stopwatch panel
+        ipcRenderer.on('update-selected-sound', (event, newPath) => {
+            customSoundPath = newPath;
+            refreshSoundList();
+        });
+    </script>
+</body>
+</html>

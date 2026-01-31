@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; }
+        
+        @font-face {
+            font-family: 'RS-Bold';
+            src: url('../assets/fonts/RuneScape-Bold-12.otf') format('opentype');
+        }
+
+        body {
+            font-family: 'RS-Bold', monospace;
+            background: #222222;
+            color: #f0e68c;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        .controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        button {
+            padding: 8px 14px;
+            background: url('../assets/button.jpg') repeat;
+            border: 2px outset #8b6914;
+            border-radius: 3px;
+            color: #f0e68c;
+            font-weight: bold;
+            font-size: 13px;
+            font-family: 'RS-Bold', monospace;
+            cursor: pointer;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+        }
+
+        button:hover {
+            border: 2px inset #8b6914;
+            transform: translateY(1px);
+        }
+
+        .new-section {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .new-section input {
+            flex: 1;
+            padding: 8px 10px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #f0e68c;
+            font-family: 'RS-Bold', monospace;
+            font-size: 13px;
+        }
+
+        .new-section input:focus {
+            outline: none;
+            border-color: #8b6914;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 6px 12px;
+            background: url('../assets/button.jpg') repeat;
+            border: 2px outset #8b6914;
+            border-radius: 3px;
+            color: #f0e68c;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: 'RS-Bold', monospace;
+        }
+
+        .tab:hover { border: 2px inset #8b6914; }
+        .tab.active { border: 2px inset #8b6914; background-color: rgba(139, 105, 20, 0.4); }
+
+        .editor {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+
+        textarea {
+            flex: 1;
+            width: 100%;
+            padding: 8px;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 3px;
+            color: #f0e68c;
+            font-family: 'RS-Bold', monospace;
+            font-size: 11px;
+            resize: none;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #8b6914;
+        }
+
+        .empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-size: 14px;
+        }
+
+        #fontSize { min-width: 45px; text-align: center; font-size: 13px; }
+
+        .rename-mode {
+            background: #3a3a3a !important;
+            border-color: #8b6914 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">Notes</div>
+        <div class="controls">
+            <button id="btnMinus">−</button>
+            <span id="fontSize">100%</span>
+            <button id="btnPlus">+</button>
+            <button id="btnRename" style="margin-left: 8px;">Rename</button>
+            <button id="btnDelete">Delete</button>
+        </div>
+    </div>
+
+    <div class="new-section">
+        <input type="text" id="inputName" placeholder="Enter name or click New for default...">
+        <button id="btnNew">New</button>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="editor" id="editor" style="display: none;">
+        <textarea id="content" placeholder="Write your notes here..."></textarea>
+    </div>
+
+    <div class="empty" id="empty">No note instances yet. Click "New" above!</div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        let data = { instances: {}, fontSize: 100 };
+        let current = null;
+        let renameMode = false;
+
+        // Load data on startup
+        ipcRenderer.invoke('load-notes').then(loaded => {
+            if (loaded && loaded.instances) {
+                data.instances = loaded.instances;
+                data.fontSize = loaded.fontSize || 100;
+            }
+            current = Object.keys(data.instances)[0] || null;
+            render();
+        });
+
+        // Window resize
+        ipcRenderer.on('window-resized', (e, size) => {
+            ipcRenderer.send('save-notes-window-size', size);
+        });
+
+        // Button events - use mousedown to avoid focus issues
+        document.getElementById('btnNew').onmousedown = function(e) {
+            e.preventDefault();
+            createInstance();
+        };
+        document.getElementById('btnDelete').onmousedown = function(e) {
+            e.preventDefault();
+            deleteInstance();
+        };
+        document.getElementById('btnRename').onmousedown = function(e) {
+            e.preventDefault();
+            startRename();
+        };
+        document.getElementById('btnPlus').onmousedown = function(e) {
+            e.preventDefault();
+            changeFont(10);
+        };
+        document.getElementById('btnMinus').onmousedown = function(e) {
+            e.preventDefault();
+            changeFont(-10);
+        };
+
+        // Input field events
+        const inputName = document.getElementById('inputName');
+        inputName.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (renameMode) {
+                    finishRename();
+                } else {
+                    createInstance();
+                }
+            } else if (e.key === 'Escape' && renameMode) {
+                cancelRename();
+            }
+        });
+
+        // Auto-save on typing
+        let saveTimer;
+        document.getElementById('content').addEventListener('input', function() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveContent, 1000);
+        });
+
+        function getNextDefaultName() {
+            let num = 1;
+            while (data.instances['Note ' + num]) {
+                num++;
+            }
+            return 'Note ' + num;
+        }
+
+        function createInstance() {
+            if (renameMode) {
+                cancelRename();
+                return;
+            }
+            
+            let name = inputName.value.trim();
+            
+            // If no name provided, use default
+            if (!name) {
+                name = getNextDefaultName();
+            }
+            
+            if (data.instances[name]) {
+                alert('Name "' + name + '" already exists!');
+                inputName.value = '';
+                inputName.focus();
+                return;
+            }
+            
+            // Save current content first
+            if (current && data.instances[current]) {
+                data.instances[current].content = document.getElementById('content').value;
+            }
+            
+            data.instances[name] = { content: '', created: new Date().toISOString() };
+            current = name;
+            inputName.value = '';
+            save();
+            render();
+            document.getElementById('content').focus();
+        }
+
+        function startRename() {
+            if (!current) {
+                alert('No instance selected to rename!');
+                return;
+            }
+            
+            renameMode = true;
+            inputName.value = current;
+            inputName.placeholder = 'Enter new name, press Enter (Esc to cancel)...';
+            inputName.classList.add('rename-mode');
+            inputName.focus();
+            inputName.select();
+        }
+
+        function finishRename() {
+            const newName = inputName.value.trim();
+            
+            if (!newName) {
+                alert('Please enter a name!');
+                inputName.focus();
+                return;
+            }
+            
+            if (newName === current) {
+                cancelRename();
+                return;
+            }
+            
+            if (data.instances[newName]) {
+                alert('Name "' + newName + '" already exists!');
+                inputName.focus();
+                inputName.select();
+                return;
+            }
+            
+            // Copy instance to new name
+            data.instances[newName] = data.instances[current];
+            delete data.instances[current];
+            current = newName;
+            
+            cancelRename();
+            save();
+            render();
+        }
+
+        function cancelRename() {
+            renameMode = false;
+            inputName.value = '';
+            inputName.placeholder = 'Enter name or click New for default...';
+            inputName.classList.remove('rename-mode');
+        }
+
+        function deleteInstance() {
+            if (renameMode) {
+                cancelRename();
+            }
+            
+            if (!current) {
+                alert('No instance selected!');
+                return;
+            }
+            
+            if (!confirm('Delete "' + current + '"?')) return;
+            
+            delete data.instances[current];
+            current = Object.keys(data.instances)[0] || null;
+            save();
+            render();
+        }
+
+        function saveContent() {
+            if (!current || !data.instances[current]) return;
+            data.instances[current].content = document.getElementById('content').value;
+            save();
+        }
+
+        function changeFont(delta) {
+            data.fontSize = Math.max(70, Math.min(150, data.fontSize + delta));
+            save();
+            render();
+        }
+
+        function save() {
+            ipcRenderer.send('save-notes', data);
+        }
+
+        function render() {
+            // Font size display
+            document.getElementById('fontSize').textContent = data.fontSize + '%';
+            document.getElementById('content').style.fontSize = (11 * data.fontSize / 100) + 'px';
+
+            // Render tabs
+            const tabsEl = document.getElementById('tabs');
+            tabsEl.innerHTML = '';
+            Object.keys(data.instances).forEach(name => {
+                const tab = document.createElement('div');
+                tab.className = 'tab' + (name === current ? ' active' : '');
+                tab.textContent = name;
+                tab.onmousedown = function(e) {
+                    e.preventDefault();
+                    if (renameMode) cancelRename();
+                    switchTo(name);
+                };
+                tabsEl.appendChild(tab);
+            });
+
+            // Show/hide editor
+            const hasInstance = current && data.instances[current];
+            document.getElementById('editor').style.display = hasInstance ? 'flex' : 'none';
+            document.getElementById('empty').style.display = hasInstance ? 'none' : 'flex';
+            
+            if (hasInstance) {
+                document.getElementById('content').value = data.instances[current].content || '';
+            }
+        }
+
+        function switchTo(name) {
+            if (current && data.instances[current]) {
+                data.instances[current].content = document.getElementById('content').value;
+            }
+            current = name;
+            save();
+            render();
+        }
+    </script>
+</body>
+</html>

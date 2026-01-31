@@ -1,8 +1,8 @@
 {
-  "name": "lostkit",
-  "version": "1.0.5",
-  "author": "LostHQ Team",
-  "description": "LostKit",
+  "name": "LostKit-2-by-LostHQ-Team",
+  "version": "2.0.0",
+  "author": "LostHQ",
+  "description": "LostKit 2 - by LostHQ Team",
   "license": "GNU General Public License v3.0",
   "repository": {
     "type": "git",
@@ -12,24 +12,49 @@
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make"
+    "make": "electron-forge make",
+    "build:win": "electron-builder --win --ia32 --x64",
+    "build:linux": "electron-builder --linux --ia32 --x64",
+    "dist": "electron-builder --dir",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\""
   },
   "dependencies": {
+    "electron-log": "^4.4.7",
     "electron-squirrel-startup": "^1.0.1",
-    "electron-window-state": "^5.0.3",
-    "update-electron-app": "^3.1.2",
-    "electron-log": "^4.4.7"
+    "electron-updater": "^6.7.3",
+    "electron-window-state": "^5.0.3"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.6.2",
-    "@electron-forge/maker-squirrel": "^7.6.2",
-    "@electron-forge/maker-zip": "^7.6.2",
-    "@electron-forge/maker-deb": "^7.6.2",
-    "@electron-forge/maker-rpm": "^7.6.2",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.6.2",
-    "@electron-forge/plugin-fuses": "^7.6.2",
-    "@electron-forge/publisher-github": "^7.6.2",
+    "@electron-forge/cli": "^7.6.0",
+    "@electron-forge/maker-squirrel": "^7.6.0",
+    "@electron-forge/maker-zip": "^7.6.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.6.0",
+    "@electron-forge/plugin-fuses": "^7.6.0",
+    "@electron-forge/publisher-github": "^7.6.0",
     "@electron/fuses": "^1.8.0",
-    "electron": "34.0.0"
+    "electron": "34.0.0",
+    "electron-builder": "^26.4.0"
+  },
+  "build": {
+    "appId": "rs.losthq.lostkit",
+    "productName": "LostKit 2",
+    "files": [
+      "**/*"
+    ],
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://tools.losthq.rs/lostkit/"
+      }
+    ],
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

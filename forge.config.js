@@ -7,34 +7,25 @@ module.exports = {
         icon: 'src/assets/icon.ico',
         outDir: 'out',
         win32metadata: {
-            ProductName: 'LostKit'
+            ProductName: 'LostKit 2 - by LostHQ Team'
         }
     },
     rebuildConfig: {},
     makers: [
-        {// Windows (Squirrel)
+        // Windows Squirrel Installer
+        {
             name: '@electron-forge/maker-squirrel',
             config: {
-                setupIcon: 'src/assets/icon.ico',
-                name: 'LostKit',
-                exe: 'LostKit.exe',
-                noMsi: true
+                setupIcon: 'src/assets/icon.ico'
             },
         },
-        {// Zip (universal)
+        // Universal - Portable ZIP
+        {
             name: '@electron-forge/maker-zip',
             config: {
                 bin: 'LostKit'
             }
-        },
-        {// Deb (Linux)
-            name: '@electron-forge/maker-deb',
-            config: { }
-        },
-        {// Rpm (Linux)
-            name: '@electron-forge/maker-rpm',
-            config: { }
-        },
+        }
     ],
     plugins: [
         {
@@ -51,5 +42,15 @@ module.exports = {
             [FuseV1Options.OnlyLoadAppFromAsar]: false,
         }),
     ],
-    publishers: [],
+    publishers: [
+        {
+            name: '@electron-forge/publisher-github',
+            config: {
+                repository: {
+                    owner: 'LostHQ',
+                    name: 'LostKit-Electron'
+                }
+            }
+        }
+    ]
 };

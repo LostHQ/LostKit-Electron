@@ -35,12 +35,14 @@ body {
 }
 
 .nav {
-    width: 200px;
+    width: 100%;
+    height: 100%;
     background: #1a1a1a;
     border: 2px solid #8b6914;
     border-radius: 8px;
     padding: 8px;
     overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .nav::-webkit-scrollbar {
@@ -193,40 +195,100 @@ button:active, .btn:active {
 }
 
 #tabs {
-    height: 30px;
-    background: #1a1a1a;
+    height: 28px;
+    background: linear-gradient(to bottom, #2a2a2a, #1a1a1a);
     display: flex;
     align-items: center;
-    border-bottom: 1px solid #8b6914;
+    border-bottom: 2px solid #8b6914;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     z-index: 10;
+    padding: 0 6px;
+    gap: 3px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+#tabs::-webkit-scrollbar {
+    height: 4px;
+}
+
+#tabs::-webkit-scrollbar-track {
+    background: #1a1a1a;
+}
+
+#tabs::-webkit-scrollbar-thumb {
+    background: #8b6914;
+    border-radius: 2px;
 }
 
 .tab {
-    padding: 5px 10px;
+    padding: 4px 10px;
     cursor: pointer;
-    border-right: 1px solid #8b6914;
     position: relative;
-    color: #f0e68c;
+    color: #ffffff;
     font-weight: bold;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 2px #000;
+    background: #2a2a2a;
+    border: 1px solid #555;
+    border-radius: 3px 3px 0 0;
+    border-bottom: none;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    min-height: 20px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    font-size: 13px;
+}
+
+.tab:hover {
+    background: #3a3a3a;
+    border-color: #8b6914;
+    color: #ffffff;
 }
 
 .tab.active {
-    background: #333;
+    background: linear-gradient(to bottom, #3a3a3a, #2a2a2a);
+    border: 1px solid #8b6914;
+    border-bottom: 2px solid #1a1a1a;
+    color: #ffffff;
+    box-shadow: 0 2px 4px rgba(139, 105, 20, 0.3);
+}
+
+.tab.active:hover {
+    background: linear-gradient(to bottom, #4a4a4a, #3a3a3a);
 }
 
 .close {
-    margin-left: 5px;
-    color: #f0e68c;
+    margin-left: 2px;
+    padding: 2px 3px;
+    border-radius: 2px;
+    color: #ffffff;
     cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
 }
 
 .close:hover {
-    color: #fff;
+    background: rgba(139, 105, 20, 0.4);
+    color: #ff6b6b;
+    font-weight: bold;
+}
+
+.close:active {
+    background: rgba(139, 105, 20, 0.6);
 }
 
 #chat-resizer {
@@ -317,9 +379,9 @@ button:active, .btn:active {
 .world-item {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: 12px 8px;
+    padding: 12px 10px;
     margin: 0;
     background: url('assets/button.jpg') repeat;
     background-size: cover;
@@ -330,6 +392,7 @@ button:active, .btn:active {
     cursor: pointer;
     transition: all 0.1s ease;
     min-height: 60px;
+    box-sizing: border-box;
 }
 
 .world-item:hover {
@@ -347,14 +410,42 @@ button:active, .btn:active {
     font-weight: bold;
     font-size: 14px;
     color: #fff;
-    text-align: center;
+    text-align: left;
+    width: 100%;
 }
 
 .world-players {
     font-size: 12px;
     color: #f0e68c;
-    text-align: center;
-    margin-top: 4px;
+    text-align: left;
+    margin-top: 2px;
+}
+
+.world-latency {
+    font-size: 11px;
+    text-align: left;
+    margin-top: 2px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Layout: group players and latency on single line inside world item */
+.world-bottom {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
+    justify-content: center;
+    margin-top: 6px;
+}
+
+/* Ensure inline row doesn't inherit layout for other world lists */
+.world-item .world-players {
+    margin-left: 0;
+}
+
+.world-item .world-latency {
+    margin-top: 0;
 }
 
 /* Hiscores Styles */
@@ -708,13 +799,14 @@ button:active, .btn:active {
 }
 
 .stopwatch-panel .setting-row {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 80px 1fr;
     gap: 8px;
     margin-bottom: 12px;
     color: #f0e68c;
     font-size: 12px;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    align-items: start;
 }
 
 .stopwatch-panel .setting-row label {
@@ -732,27 +824,20 @@ button:active, .btn:active {
 }
 
 .stopwatch-panel input[type="range"] {
-    flex: 0 1 90px;
     cursor: pointer;
-    max-width: 90px;
+    width: 100%;
 }
 
-.stopwatch-panel input[type="number"] {
-    width: 70px;
-    padding: 4px 6px;
-    background: #2a2a2a;
-    border: 2px solid #8b6914;
-    border-radius: 4px;
-    color: #f0e68c;
-    font-family: 'RS-Plain', sans-serif;
-    font-size: 12px;
+.stopwatch-panel .range-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
 }
 
 .stopwatch-panel .range-value {
-    min-width: 50px;
-    text-align: right;
     color: #4CAF50;
     font-weight: bold;
+    font-size: 11px;
 }
 
 .stopwatch-panel .control-buttons {

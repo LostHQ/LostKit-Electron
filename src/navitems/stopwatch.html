@@ -3,6 +3,11 @@
 <head>
     <link rel="stylesheet" type="text/css" href="../main.css" />
     <style>
+        @font-face {
+            font-family: 'RS-Quill';
+            src: url('../assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+        }
+
         #stopwatch-display-container {
             background: rgba(0, 0, 0, 0.6);
             border: 2px solid #666;
@@ -70,9 +75,9 @@
             <img src="../assets/back.png" class="nav-icon">
             <span>Back</span>
         </div>
-
+        
         <div class="mode-indicator" id="mode-display">Mode: AFK Timer (90s)</div>
-
+        
         <div class="mode-selector">
             <button id="afk-btn" class="mode-btn active" onclick="setMode('afk')">AFK (90s)</button>
             <button id="countdown-btn" class="mode-btn" onclick="setMode('countdown')">Countdown</button>
@@ -90,7 +95,7 @@
 
         <div class="panel-section section-spacing" id="countdown-settings" style="display: none;">
             <div class="section-title">Countdown Settings</div>
-
+            
             <div class="setting-row">
                 <label>Set Time:</label>
                 <input type="number" id="countdown-time" min="1" max="999" value="90">
@@ -100,22 +105,40 @@
 
         <div class="panel-section">
             <div class="section-title">Notifications</div>
-
+            
             <div class="setting-row">
                 <label>Sound Alert:</label>
                 <label class="sound-checkbox-label">
                     <input type="checkbox" id="sound-alert-checkbox">
                     <span class="sound-checkmark"></span>
-                    <span>Beep at 10 seconds</span>
+                    <span>Alert at threshold</span>
                 </label>
             </div>
-
+            
+            <div class="setting-row">
+                <label>Threshold:</label>
+                <input type="number" id="alert-threshold-input" min="1" max="89" value="10" style="width: 60px; padding: 4px 6px; background: #2a2a2a; border: 2px solid #8b6914; border-radius: 3px; color: #f0e68c; font-family: 'RS-Plain', sans-serif; font-size: 12px; text-align: center;">
+                <span style="margin-left: 4px;">seconds</span>
+            </div>
+            
             <div class="setting-row">
                 <label>Volume:</label>
-                <input type="range" id="volume-slider" min="0" max="100" value="30" step="5">
-                <span class="range-value" id="volume-value">30%</span>
+                <div class="range-wrapper">
+                    <input type="range" id="volume-slider" min="0" max="100" value="60" step="5">
+                    <span class="range-value" id="volume-value">30%</span>
+                </div>
             </div>
-
+            
+            <div class="setting-row">
+                <label>Custom Sound:</label>
+                <div style="display: flex; gap: 4px;">
+                    <button onclick="document.getElementById('custom-sound-input').click();" style="flex: 1; padding: 8px; background: url('../assets/button.jpg') repeat; background-size: cover; border: 2px outset #8b6914; border-radius: 3px; color: #f0e68c; font-weight: bold; font-size: 11px; cursor: pointer; font-family: 'RS-Quill', monospace; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); transition: all 0.1s ease;" onmouseover="this.style.border='2px inset #8b6914'; this.style.backgroundColor='rgba(139, 105, 20, 0.3)'; this.style.transform='translateY(1px)';" onmouseout="this.style.border='2px outset #8b6914'; this.style.backgroundColor=''; this.style.transform='';">Add Sound</button>
+                    <button onclick="openSoundManager();" style="flex: 1; padding: 8px; background: url('../assets/button.jpg') repeat; background-size: cover; border: 2px outset #8b6914; border-radius: 3px; color: #f0e68c; font-weight: bold; font-size: 11px; cursor: pointer; font-family: 'RS-Quill', monospace; text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8); transition: all 0.1s ease;" onmouseover="this.style.border='2px inset #8b6914'; this.style.backgroundColor='rgba(139, 105, 20, 0.3)'; this.style.transform='translateY(1px)';" onmouseout="this.style.border='2px outset #8b6914'; this.style.backgroundColor=''; this.style.transform='';">Manage</button>
+                </div>
+                <span id="custom-sound-label" style="font-size: 10px; color: #b8a060; margin-top: 4px;">No custom sound</span>
+            </div>
+            <input type="file" id="custom-sound-input" accept="audio/*" style="display: none;">
+            
             <div class="setting-row">
                 <label>Auto-Loop:</label>
                 <label class="sound-checkbox-label">
@@ -136,22 +159,18 @@
 
         <div class="panel-section">
             <div class="section-title">Appearance</div>
-
+            
             <div class="setting-row">
                 <label>Color:</label>
                 <input type="color" id="color-picker" value="#00ff00">
             </div>
-
-            <div class="setting-row">
-                <label>Size:</label>
-                <input type="range" id="size-slider" min="24" max="120" value="48" step="4">
-                <span class="range-value" id="size-value">48px</span>
-            </div>
-
+            
             <div class="setting-row">
                 <label>Opacity:</label>
-                <input type="range" id="opacity-slider" min="30" max="100" value="100" step="5">
-                <span class="range-value" id="opacity-value">100%</span>
+                <div class="range-wrapper">
+                    <input type="range" id="opacity-slider" min="30" max="100" value="100" step="5">
+                    <span class="range-value" id="opacity-value">100%</span>
+                </div>
             </div>
         </div>
     </div>

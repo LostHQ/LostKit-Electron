@@ -28,6 +28,19 @@ body {
     overflow-x: hidden;
 }
 
+/* Main Overlay Container */
+.stopwatch-overlay {
+    width: 100%;
+    max-width: 800px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    transition: var(--transition);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transform-origin: center;
+}
 
 .stopwatch-container {
     padding: 30px;
@@ -559,6 +572,24 @@ input:checked + .slider-toggle:before {
     font-weight: 600;
 }
 
+/* Flash Overlay */
+.flash-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1000;
+    transition: opacity 0.3s;
+}
+
+.flash-overlay.active {
+    animation: flashEffect 0.5s;
+}
+
 @keyframes flashEffect {
     0% { opacity: 0; }
     25% { opacity: 0.8; }
@@ -572,19 +603,19 @@ input:checked + .slider-toggle:before {
     .stopwatch-container {
         padding: 20px;
     }
-
+    
     .time-display {
         font-size: 48px;
     }
-
+    
     .mode-buttons {
         grid-template-columns: 1fr;
     }
-
+    
     .button-group {
         grid-template-columns: 1fr;
     }
-
+    
     .control-group {
         padding: 20px;
     }
@@ -594,15 +625,15 @@ input:checked + .slider-toggle:before {
     .stopwatch-container {
         padding: 15px;
     }
-
+    
     .title {
         font-size: 24px;
     }
-
+    
     .time-display {
         font-size: 36px;
     }
-
+    
     .footer {
         flex-direction: column;
         gap: 10px;

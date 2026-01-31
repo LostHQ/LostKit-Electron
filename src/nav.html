@@ -21,53 +21,58 @@
             <img src="assets/hiscores.png" class="nav-icon">
             <span>Hiscores</span>
         </div>
-        <div class="nav-button link" data-url='https://lostcity.rs' data-title="Forums" onclick="addTab('https://lostcity.rs', 'Forums')">
+        <div class="nav-button special-link" onclick="openNotes()">
+            <img src="assets/notes.png" class="nav-icon" onerror="this.style.display='none'">
+            <span>Notes</span>
+        </div>
+        <div class="nav-button link" data-url='https://lostcity.rs' data-title="Forums" onclick="addTab('https://lostcity.rs', 'Forums', 'assets/forums.png')">
             <img src="assets/forums.png" class="nav-icon">
             <span>Forums</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://tools.losthq.rs/cluecoordinator/' data-title="Coordinates" onclick="addTab('https://tools.losthq.rs/cluecoordinator/', 'Coordinates')">
+        <div class="nav-button link" data-url='https://tools.losthq.rs/cluecoordinator/' data-title="Coordinates" onclick="addTab('https://tools.losthq.rs/cluecoordinator/', 'Coordinates', 'assets/coordinates.png')">
             <img src="assets/coordinates.png" class="nav-icon">
             <span>Coordinates</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://razgals.github.io/Treasure-V2/' data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure-V2/', 'Clue Help')">
+        <div class="nav-button link" data-url='https://razgals.github.io/Treasure-V2/' data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure-V2/', 'Clue Help', 'assets/cluehelp.png')">
             <img src="assets/cluehelp.png" class="nav-icon">
             <span>Clue Help</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.lostcity.rs/worldmap' data-title="World Map" onclick="addTab('https://2004.lostcity.rs/worldmap', 'World Map')">
+        <div class="nav-button link" data-url='https://2004.lostcity.rs/worldmap' data-title="World Map" onclick="addTab('https://2004.lostcity.rs/worldmap', 'World Map', 'assets/worldmap.png')">
             <img src="assets/worldmap.png" class="nav-icon">
             <span>World Map</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://lostcity.markets' data-title="Markets" onclick="addTab('https://lostcity.markets', 'Markets')">
+        <div class="nav-button link" data-url='https://lostcity.markets' data-title="Markets" onclick="addTab('https://lostcity.markets', 'Markets', 'assets/market.png')">
             <img src="assets/market.png" class="nav-icon">
             <span>Markets</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=questguides' data-title="Quest Guides" onclick="addTab('https://2004.losthq.rs/?p=questguides', 'Quest Guides')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=questguides' data-title="Quest Guides" onclick="addTab('https://2004.losthq.rs/?p=questguides', 'Quest Guides', 'assets/quests.png')">
             <img src="assets/quests.png" class="nav-icon">
             <span>Quest Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=skillguides' data-title="Skill Guides" onclick="addTab('https://2004.losthq.rs/?p=skillguides', 'Skill Guides')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=skillguides' data-title="Skill Guides" onclick="addTab('https://2004.losthq.rs/?p=skillguides', 'Skill Guides', 'assets/skillsguides.png')">
             <img src="assets/skillsguides.png" class="nav-icon">
             <span>Skill Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=calculators' data-title="Skills Calculator" onclick="addTab('https://2004.losthq.rs/?p=calculators', 'Skills Calculator')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=calculators' data-title="Skills Calculator" onclick="addTab('https://2004.losthq.rs/?p=calculators', 'Skills Calculator', 'assets/skillscalculator.png')">
             <img src="assets/skillscalculator.png" class="nav-icon">
             <span>Skills Calculator</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=droptables' data-title="Bestiary" onclick="addTab('https://2004.losthq.rs/?p=droptables', 'Bestiary')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=droptables' data-title="Bestiary" onclick="addTab('https://2004.losthq.rs/?p=droptables', 'Bestiary', 'assets/bestiary.png')">
             <img src="assets/bestiary.png" class="nav-icon">
             <span>Bestiary</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs')">
+        <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs', 'assets/lcl.png')">
             <img src="assets/lcl.png" class="nav-icon">
             <span>Lost City Labs</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
     </div>
     <script>
         const { ipcRenderer } = require('electron');
-        function addTab(url, title) { ipcRenderer.send('add-tab', url, title); }
+        function addTab(url, title, iconPath) { ipcRenderer.send('add-tab', url, title, iconPath); }
         function openNav(view) { ipcRenderer.send('switch-nav-view', view); }
         function toggleChat() { ipcRenderer.send('toggle-chat'); }
         function openExternal(url, title) { ipcRenderer.send('open-external', url, title); }
+        function openNotes() { ipcRenderer.invoke('open-notes'); }
     </script>
 </body>
 </html>
