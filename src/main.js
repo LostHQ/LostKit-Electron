@@ -7,6 +7,59 @@ const version = require('../package.json').version;
 // Configure logging
 log.transports.file.level = 'info';
 
+// Version check URL (raw GitHub - no rate limits, with cache busting)
+const VERSION_CHECK_URL = 'https://raw.githubusercontent.com/LostHQ/LostKit-Electron/main/version.json';
+
+// Simple version comparison (returns 1 if a > b, -1 if a < b, 0 if equal)
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const na = pa[i] || 0;
+    const nb = pb[i] || 0;
+    if (na > nb) return 1;
+    if (na < nb) return -1;
+  }
+  return 0;
+}
+
+async function checkForUpdates() {
+  try {
+    log.info('Checking for updates...');
+    // Add timestamp to bust GitHub's CDN cache
+    const response = await fetch(VERSION_CHECK_URL + '?t=' + Date.now());
+    if (!response.ok) {
+      log.info('Version check failed: server returned', response.status);
+      return;
+    }
+    const data = await response.json();
+    const latestVersion = data.version;
+    const downloadUrl = data.url || 'https://github.com/LostHQ/LostKit-Electron/releases';
+    if (latestVersion && compareVersions(latestVersion, version) > 0) {
+      log.info('New version available:', latestVersion);
+      // Show update notification
+      if (mainWindow) {
+        const choice = dialog.showMessageBoxSync(mainWindow, {
+          type: 'info',
+          buttons: ['Later', 'Download Now'],
+          defaultId: 1,
+          cancelId: 0,
+          title: 'Update Available',
+          message: `A new version (v${latestVersion}) is available!`,
+          detail: `You are currently using v${version}. Click "Download Now" to get the latest version.`
+        });
+        if (choice === 1) {
+          shell.openExternal(downloadUrl);
+        }
+      }
+    } else {
+      log.info('App is up to date. Current:', version);
+    }
+  } catch (e) {
+    log.error('Version check failed:', e.message);
+  }
+}
+
 // Settings persistence
 const settingsPath = path.join(process.env.APPDATA || process.env.HOME || '.', '.lostkit-settings.json');
 let appSettings = {
@@ -123,7 +176,13 @@ app.whenReady().then(() => {
     title: `LostKit 2 v${version} - by LostHQ Team`
   });
 
+
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
+
+  // Check for updates after app starts (lightweight version check)
+  setTimeout(() => {
+    checkForUpdates();
+  }, 3000); // Wait 3 seconds after startup
 
   navView = new WebContentsView({
     webPreferences: {
