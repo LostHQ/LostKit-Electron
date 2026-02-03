@@ -50,10 +50,8 @@ function displayWorlds() {
 
         item.innerHTML = `
             <div class="world-title">World ${world.world}</div>
-            <div class="world-bottom">
-                <div class="world-players">${world.count} Online</div>
-                <div class="world-latency" style="color: ${latencyColor};">${latencyText}</div>
-            </div>
+            <div class="world-players">${world.count} Online</div>
+            <div class="world-latency" style="color: ${latencyColor};">${latencyText}</div>
         `;
 
         item.onclick = () => selectWorld(world);

@@ -7,7 +7,7 @@ let countdownTime = 90;
 let soundAlert = false;
 let soundVolume = 60; // Increased default for background notifications
 let autoLoop = false;
-let afkAuto = false;
+let afkGameClick = false; // Reset AFK timer when clicking on game tab
 let customSoundPath = ''; // NEW: Path to custom sound file
 let alertThreshold = 10; // NEW: Seconds before end to alert (default 10s)
 let color = '#00ff00';
@@ -40,7 +40,7 @@ const volumeValue = document.getElementById('volume-value');
 const colorPicker = document.getElementById('color-picker');
 const opacitySlider = document.getElementById('opacity-slider');
 const opacityValue = document.getElementById('opacity-value');
-const afkAutoCheckbox = document.getElementById('afk-auto-checkbox');
+const afkGameClickCheckbox = document.getElementById('afk-game-click-checkbox');
 const customSoundInput = document.getElementById('custom-sound-input');
 const customSoundLabel = document.getElementById('custom-sound-label');
 
@@ -149,7 +149,7 @@ function saveConfig() {
         soundAlert,
         soundVolume,
         autoLoop,
-        afkAuto,
+        afkGameClick,
         customSoundFilename: customSoundPath ? path.basename(customSoundPath) : '',
         alertThreshold,
         color,
@@ -173,7 +173,7 @@ function loadConfig() {
             soundAlert = config.soundAlert ?? soundAlert;
             soundVolume = config.soundVolume ?? soundVolume;
             autoLoop = config.autoLoop ?? autoLoop;
-            afkAuto = config.afkAuto ?? afkAuto;
+            afkGameClick = config.afkGameClick ?? afkGameClick;
             
             // Handle custom sound - if filename is stored, reconstruct full path
             if (config.customSoundFilename) {
@@ -195,6 +195,8 @@ function loadConfig() {
             ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
             ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
             ipcRenderer.send('update-stopwatch-setting', 'customSoundPath', customSoundPath);
+            ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
+            ipcRenderer.send('update-stopwatch-setting', 'alertThreshold', alertThreshold);
             console.log('Sent settings to main process');
         }
     } catch (e) {
@@ -373,6 +375,11 @@ resetBtn.addEventListener('click', () => {
     soundPlayed = false;
     timerDisplay.classList.remove('flash-red');
     
+    // If game-click mode is active, also reset the background timer
+    if (afkGameClick && currentMode === 'afk') {
+        ipcRenderer.send('reset-game-click-timer');
+    }
+    
     if (running) {
         clearInterval(interval);
         interval = setInterval(tick, 1000);
@@ -499,6 +506,7 @@ alertThresholdInput.addEventListener('change', (e) => {
     alertThreshold = value;
     alertThresholdInput.value = value;
     saveConfig();
+    ipcRenderer.send('update-stopwatch-setting', 'alertThreshold', alertThreshold);
 });
 
 // Volume slider
@@ -515,12 +523,12 @@ autoLoopCheckbox.addEventListener('change', () => {
     saveConfig();
 });
 
-// AFK Auto checkbox
-afkAutoCheckbox.addEventListener('change', () => {
-    afkAuto = afkAutoCheckbox.checked;
+// AFK Game Click checkbox
+afkGameClickCheckbox.addEventListener('change', () => {
+    afkGameClick = afkGameClickCheckbox.checked;
     saveConfig();
-    console.log('nav panel: afkAuto changed ->', afkAuto);
-    ipcRenderer.send('update-stopwatch-setting', 'afkAuto', afkAuto);
+    console.log('nav panel: afkGameClick changed ->', afkGameClick);
+    ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
 });
 
 // Volume slider
@@ -632,7 +640,7 @@ autoLoopCheckbox.checked = autoLoop;
 alertThresholdInput.value = alertThreshold;
 volumeSlider.value = soundVolume;
 volumeValue.textContent = `${soundVolume}%`;
-afkAutoCheckbox.checked = afkAuto;
+afkGameClickCheckbox.checked = afkGameClick;
 if (customSoundPath) {
     const soundFileName = path.basename(customSoundPath);
     customSoundLabel.textContent = 'Custom Sound: ' + soundFileName;
@@ -645,52 +653,45 @@ refreshSoundList();
 // Apply initial styling
 timerDisplay.style.opacity = opacity / 100;
 
-// Inform main process of current AFK Auto setting on load so auto behavior works
-ipcRenderer.send('update-stopwatch-setting', 'afkAuto', afkAuto);
-console.log('nav panel: initial afkAuto sent ->', afkAuto);
-
-// Listen for AFK auto-start signal from main process (when window loses focus or is minimized)
-ipcRenderer.on('afk-auto-start', () => {
-    console.log('Received afk-auto-start signal, currentMode:', currentMode);
-    
-    // Only auto-start if we're in AFK mode
-    if (currentMode === 'afk') {
-        console.log('Starting AFK timer automatically');
-        
-        // Reset and start the timer
-        seconds = 0;
-        soundPlayed = false;
-        timerDisplay.classList.remove('flash-red');
-        
-        // Start the interval
-        if (running) {
-            clearInterval(interval);
-        }
-        interval = setInterval(tick, 1000);
+// Request current background timer state and sync display
+ipcRenderer.invoke('get-game-click-timer-state').then((state) => {
+    if (state && state.running && state.afkGameClick && currentMode === 'afk') {
+        seconds = state.seconds;
         running = true;
         startBtn.textContent = 'Pause';
         updateDisplay();
+        console.log('Synced with background timer:', state.seconds, 'seconds');
     }
-});
+}).catch(err => console.log('Could not get timer state:', err));
 
-// Listen for AFK auto-stop signal from main process (when window regains focus)
-ipcRenderer.on('afk-auto-stop', () => {
-    console.log('Received afk-auto-stop signal, currentMode:', currentMode);
+// Inform main process of current settings on load so background timer works
+ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
+ipcRenderer.send('update-stopwatch-setting', 'alertThreshold', alertThreshold);
+ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
+ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
+ipcRenderer.send('update-stopwatch-setting', 'customSoundPath', customSoundPath);
+console.log('nav panel: initial settings sent to main process');
+
+// Listen for game click reset signal from main process
+ipcRenderer.on('afk-game-click-reset', () => {
+    console.log('Received afk-game-click-reset signal, currentMode:', currentMode);
     
     // Only reset if we're in AFK mode
     if (currentMode === 'afk') {
-        // Stop the timer if running
-        if (running) {
-            clearInterval(interval);
-            running = false;
-            startBtn.textContent = 'Start';
-        }
-        
-        // Reset the timer
+        // Reset the timer and restart it
         seconds = 0;
         soundPlayed = false;
         timerDisplay.classList.remove('flash-red');
+        
+        // Start the timer if not already running
+        if (!running) {
+            interval = setInterval(tick, 1000);
+            running = true;
+            startBtn.textContent = 'Pause';
+        }
+        
         updateDisplay();
+        console.log('AFK timer reset due to game click');
     }
 });
 
@@ -710,19 +711,36 @@ ipcRenderer.on('sound-selected', (event, soundPath) => {
     console.log('Sound selected from manager:', soundPath);
 });
 
-// Listen for background AFK alerts from main process
-ipcRenderer.on('background-afk-alert', () => {
-    console.log('Received background AFK alert, soundAlert:', soundAlert);
-    // Play the alert sound if sound alert is enabled
-    if (soundAlert) {
-        playBeep();
+// Listen for game-click background timer ticks to sync display
+ipcRenderer.on('game-click-timer-tick', (event, bgSeconds) => {
+    // Sync the stopwatch display with the background timer when in AFK mode
+    if (currentMode === 'afk' && afkGameClick) {
+        seconds = bgSeconds;
+        updateDisplay();
     }
 });
 
-// Listen for background AFK timer ticks
-ipcRenderer.on('background-afk-tick', (event, seconds) => {
-    console.log('Background AFK tick:', seconds);
-    // Could update UI here if user comes back to stopwatch view
+// Listen for alert sound request from main process (background timer)
+ipcRenderer.on('play-alert-sound', (event, data) => {
+    console.log('Received play-alert-sound request:', data);
+    
+    if (data.customSoundPath && fs.existsSync(data.customSoundPath)) {
+        try {
+            const audio = new Audio(`file://${data.customSoundPath}`);
+            audio.volume = data.soundVolume / 100;
+            audio.play().then(() => {
+                console.log('Background alert sound played:', data.customSoundPath);
+            }).catch(e => {
+                console.log('Failed to play background alert sound:', e);
+                playDefaultBeep();
+            });
+        } catch (e) {
+            console.log('Error playing background alert sound:', e);
+            playDefaultBeep();
+        }
+    } else {
+        playDefaultBeep();
+    }
 });
 
 // Back button function

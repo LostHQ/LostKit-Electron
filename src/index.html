@@ -99,6 +99,26 @@
         isResizing = false;
       }
     });
+
+    // Listen for alert sound request from main process (background timer)
+    // This runs in main window which is always loaded
+    ipcRenderer.on('play-alert-sound', (event, data) => {
+      console.log('Main window received play-alert-sound request:', data);
+      
+      if (data.customSoundPath) {
+        try {
+          const audio = new Audio('file://' + data.customSoundPath);
+          audio.volume = data.soundVolume / 100;
+          audio.play().then(() => {
+            console.log('Background alert sound played from main window');
+          }).catch(e => {
+            console.log('Failed to play sound in main window:', e);
+          });
+        } catch (e) {
+          console.log('Error playing sound in main window:', e);
+        }
+      }
+    });
   </script>
 </body>
 </html>
