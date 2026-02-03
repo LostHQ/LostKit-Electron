@@ -1,5 +1,49 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require('electron');
+const log = require('electron-log');
 const path = require('path');
+const fs = require('fs');
+const version = require('../package.json').version;
+
+// Configure logging
+log.transports.file.level = 'info';
+
+// Settings persistence
+const settingsPath = path.join(process.env.APPDATA || process.env.HOME || '.', '.lostkit-settings.json');
+let appSettings = {
+  mainWindow: { width: 1100, height: 920, x: null, y: null },
+  zoomFactor: 1,
+  chatHeight: 300,
+  chatVisible: true,
+  lastWorld: { url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' },
+  soundManagerWindow: { width: 450, height: 500 },
+  notesWindow: { width: 500, height: 600 }
+};
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf8');
+      const loaded = JSON.parse(data);
+      appSettings = { ...appSettings, ...loaded };
+      log.info('Settings loaded from', settingsPath);
+    }
+  } catch (e) {
+    log.error('Failed to load settings:', e);
+  }
+}
+
+function saveSettings() {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(appSettings, null, 2), 'utf8');
+  } catch (e) {
+    log.error('Failed to save settings:', e);
+  }
+}
+
+function saveSettingsDebounced() {
+  if (saveSettingsDebounced.timer) clearTimeout(saveSettingsDebounced.timer);
+  saveSettingsDebounced.timer = setTimeout(saveSettings, 500);
+}
 
 // Handle Squirrel installer events on Windows
 if (require('electron-squirrel-startup')) {
@@ -21,12 +65,29 @@ let navView;
 let chatView;
 let soundManagerWindow = null;
 let notesWindow = null;
-let tabs = [{ id: 'main', url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' }];
-let tabByUrl = new Map([['https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0','main']]);
+
+// Default world - will be overridden by saved settings
+const defaultWorldUrl = 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0';
+const defaultWorldTitle = 'W2 HD';
+let tabs = [{ id: 'main', url: defaultWorldUrl, title: defaultWorldTitle }];
+let tabByUrl = new Map([[defaultWorldUrl, 'main']]);
 let externalWindowsByUrl = new Map();
 let currentTab = 'main';
 let chatVisible = true;
 let chatHeightValue = 300;
+
+// Load settings early
+loadSettings();
+chatHeightValue = appSettings.chatHeight || 300;
+chatVisible = appSettings.chatVisible !== false;
+
+// Apply saved last world
+if (appSettings.lastWorld && appSettings.lastWorld.url) {
+  tabs[0].url = appSettings.lastWorld.url;
+  tabs[0].title = appSettings.lastWorld.title || 'World';
+  tabByUrl.clear();
+  tabByUrl.set(tabs[0].url, 'main');
+}
 
 function updateBounds() {
   const contentBounds = mainWindow.getContentBounds();
@@ -48,15 +109,18 @@ function updateBounds() {
 }
 
 app.whenReady().then(() => {
+  const savedBounds = appSettings.mainWindow || {};
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 920,
+    width: savedBounds.width || 1100,
+    height: savedBounds.height || 920,
+    x: savedBounds.x != null ? savedBounds.x : undefined,
+    y: savedBounds.y != null ? savedBounds.y : undefined,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     },
-    title: 'LostKit 2 - by LostHQ Team'
+    title: `LostKit 2 v${version} - by LostHQ Team`
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
@@ -89,7 +153,10 @@ app.whenReady().then(() => {
       preload: path.join(__dirname, 'gameview-preload.js')
     }
   });
-  mainView.webContents.loadURL('https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0');
+  // Load saved world or default
+  const startWorldUrl = tabs[0].url;
+  const startWorldTitle = tabs[0].title;
+  mainView.webContents.loadURL(startWorldUrl);
   mainView.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -98,8 +165,26 @@ app.whenReady().then(() => {
   mainWindow.contentView.addChildView(mainView);
   primaryViews.push({ id: 'main', view: mainView });
 
+  // Restore zoom factor if saved
+  if (appSettings.zoomFactor && appSettings.zoomFactor !== 1) {
+    mainView.webContents.once('did-finish-load', () => {
+      try { mainView.webContents.setZoomFactor(appSettings.zoomFactor); } catch (e) {}
+    });
+  }
+
+  // Save main window bounds on resize/move
+  const saveMainWindowBounds = () => {
+    if (mainWindow && !mainWindow.isMinimized() && !mainWindow.isMaximized()) {
+      const bounds = mainWindow.getBounds();
+      appSettings.mainWindow = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+      saveSettingsDebounced();
+    }
+  };
+  mainWindow.on('resized', saveMainWindowBounds);
+  mainWindow.on('moved', saveMainWindowBounds);
+
   mainWindow.webContents.send('update-active', 'main');
-  mainWindow.webContents.send('update-tab-title', 'main', 'W2 HD');
+  mainWindow.webContents.send('update-tab-title', 'main', startWorldTitle);
 
   updateBounds();
   mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
@@ -466,23 +551,15 @@ app.whenReady().then(() => {
       return;
     }
 
-    let windowWidth = 500;
-    let windowHeight = 600;
-    // Try to read saved dimensions from notes file
-    try {
-      const notesPath = path.join(process.env.APPDATA || process.env.HOME, '.lostkit-notes.json');
-      const fsPromises = require('fs').promises;
-      const notesData = await fsPromises.readFile(notesPath, 'utf8');
-      const parsed = JSON.parse(notesData);
-      if (parsed.windowWidth) windowWidth = parsed.windowWidth;
-      if (parsed.windowHeight) windowHeight = parsed.windowHeight;
-    } catch (e) {
-      // Use defaults
-    }
+    const notesBounds = appSettings.notesWindow || { width: 500, height: 600 };
+    let windowWidth = notesBounds.width || 500;
+    let windowHeight = notesBounds.height || 600;
 
     notesWindow = new BrowserWindow({
       width: windowWidth,
       height: windowHeight,
+      x: notesBounds.x != null ? notesBounds.x : undefined,
+      y: notesBounds.y != null ? notesBounds.y : undefined,
       minWidth: 350,
       minHeight: 300,
       autoHideMenuBar: true,
@@ -494,6 +571,16 @@ app.whenReady().then(() => {
     });
 
     notesWindow.loadFile(path.join(__dirname, 'navitems/notes.html'));
+
+    const saveNotesBounds = () => {
+      if (notesWindow && !notesWindow.isDestroyed() && !notesWindow.isMinimized()) {
+        const bounds = notesWindow.getBounds();
+        appSettings.notesWindow = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+        saveSettingsDebounced();
+      }
+    };
+    notesWindow.on('resized', saveNotesBounds);
+    notesWindow.on('moved', saveNotesBounds);
 
     notesWindow.on('resize', () => {
       const [width, height] = notesWindow.getSize();
@@ -578,15 +665,22 @@ app.whenReady().then(() => {
       const cur = targetWC.getZoomFactor();
       const newFactor = Math.max(0.5, Math.min(3, zoomIn ? cur * 1.1 : cur / 1.1));
       targetWC.setZoomFactor(newFactor);
-      console.log('Zoom applied:', newFactor);
+      // Save zoom factor for main game view
+      if (pv && pv.id === 'main') {
+        appSettings.zoomFactor = newFactor;
+        saveSettingsDebounced();
+      }
+      log.info('Zoom applied:', newFactor);
     } catch (e) {
-      console.log('zoom-wheel handler error:', e);
+      log.error('zoom-wheel handler error:', e);
     }
   });
 
   ipcMain.on('toggle-chat', () => {
     chatVisible = !chatVisible;
     chatView.setVisible(chatVisible);
+    appSettings.chatVisible = chatVisible;
+    saveSettingsDebounced();
     updateBounds();
     mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
   });
@@ -704,6 +798,11 @@ app.whenReady().then(() => {
       if (currentView) {
         currentView.view.webContents.loadURL(url);
       }
+      // Save last world for the main tab
+      if (currentTab === 'main') {
+        appSettings.lastWorld = { url, title };
+        saveSettingsDebounced();
+      }
       mainWindow.webContents.send('update-tab-title', currentTab, title);
       ipcMain.emit('switch-nav-view', null, 'nav');
     }
@@ -715,11 +814,15 @@ app.whenReady().then(() => {
 
   ipcMain.on('set-chat-height', (event, height) => {
     chatHeightValue = Math.max(200, Math.min(height, 800));
+    appSettings.chatHeight = chatHeightValue;
+    saveSettingsDebounced();
     updateBounds();
   });
 
   ipcMain.on('update-chat-height', (event, height) => {
     chatHeightValue = Math.max(200, Math.min(800, height));
+    appSettings.chatHeight = chatHeightValue;
+    saveSettingsDebounced();
     updateBounds();
   });
 
