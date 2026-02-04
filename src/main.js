@@ -540,9 +540,12 @@ app.whenReady().then(() => {
       return;
     }
 
+    const smBounds = appSettings.soundManagerWindow || { width: 450, height: 500 };
     soundManagerWindow = new BrowserWindow({
-      width: 450,
-      height: 500,
+      width: smBounds.width || 450,
+      height: smBounds.height || 500,
+      x: smBounds.x != null ? smBounds.x : undefined,
+      y: smBounds.y != null ? smBounds.y : undefined,
       autoHideMenuBar: true,
       webPreferences: {
         nodeIntegration: true,
@@ -553,6 +556,16 @@ app.whenReady().then(() => {
 
     soundManagerWindow.loadFile(path.join(__dirname, 'navitems/sound-manager.html'));
 
+    // Save sound manager window bounds on resize/move
+    const saveSoundManagerBounds = () => {
+      if (soundManagerWindow && !soundManagerWindow.isDestroyed() && !soundManagerWindow.isMinimized()) {
+        const bounds = soundManagerWindow.getBounds();
+        appSettings.soundManagerWindow = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+        saveSettingsDebounced();
+      }
+    };
+    soundManagerWindow.on('resized', saveSoundManagerBounds);
+    soundManagerWindow.on('moved', saveSoundManagerBounds);
     soundManagerWindow.on('closed', () => {
       soundManagerWindow = null;
     });
@@ -891,14 +904,29 @@ app.whenReady().then(() => {
       existing.focus();
       return;
     }
+    // Save/restore external window bounds
+    const extBounds = appSettings.externalWindows && appSettings.externalWindows[url] ? appSettings.externalWindows[url] : { width: 1000, height: 700 };
     const win = new BrowserWindow({
-      width: 1000, height: 700,
+      width: extBounds.width || 1000,
+      height: extBounds.height || 700,
+      x: extBounds.x != null ? extBounds.x : undefined,
+      y: extBounds.y != null ? extBounds.y : undefined,
       title: title || url,
       webPreferences: { webSecurity: false }
     });
     win.loadURL(url);
     win.setMenuBarVisibility(false);
     externalWindowsByUrl.set(url, win);
+    if (!appSettings.externalWindows) appSettings.externalWindows = {};
+    const saveExternalBounds = () => {
+      if (win && !win.isDestroyed() && !win.isMinimized()) {
+        const bounds = win.getBounds();
+        appSettings.externalWindows[url] = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+        saveSettingsDebounced();
+      }
+    };
+    win.on('resized', saveExternalBounds);
+    win.on('moved', saveExternalBounds);
     win.on('closed', () => {
       if (externalWindowsByUrl.get(url) === win) externalWindowsByUrl.delete(url);
     });
