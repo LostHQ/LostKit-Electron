@@ -4,6 +4,16 @@ const path = require('path');
 const fs = require('fs');
 const version = require('../package.json').version;
 
+// NAV_PANEL_WIDTH is used for nav panel sizing
+const NAV_PANEL_WIDTH = 250;
+
+// Track nav panel collapsed state
+let navPanelCollapsed = false;
+
+// ...existing code...
+
+// Place this after navView is initialized (after app.whenReady)
+
 // Configure logging
 log.transports.file.level = 'info';
 
@@ -65,6 +75,9 @@ const settingsPath = path.join(process.env.APPDATA || process.env.HOME || '.', '
 let appSettings = {
   mainWindow: { width: 1100, height: 920, x: null, y: null },
   zoomFactor: 1,
+  tabZoom: {}, // { url: zoomFactor }
+  externalZoom: {}, // { url: zoomFactor }
+  chatZoom: 1,
   chatHeight: 300,
   chatVisible: true,
   lastWorld: { url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' },
@@ -146,7 +159,7 @@ function updateBounds() {
   const contentBounds = mainWindow.getContentBounds();
   const width = contentBounds.width;
   const height = contentBounds.height;
-  const navWidth = 250;
+  const navWidth = navPanelCollapsed ? 0 : NAV_PANEL_WIDTH;
   const tabHeight = 28;
   const chatHeight = chatVisible ? chatHeightValue : 0;
   const dividerHeight = chatVisible ? 3 : 0;
@@ -156,12 +169,45 @@ function updateBounds() {
   primaryViews.forEach(({ view }) => {
     view.setBounds({ x: 0, y: tabHeight, width: primaryWidth, height: primaryHeight });
   });
-  navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
+  if (!navPanelCollapsed) {
+    navView.setVisible(true);
+    navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
+  } else {
+    navView.setVisible(false);
+  }
   chatView.setBounds({ x: 0, y: height - chatHeight, width: primaryWidth, height: chatHeight });
   mainWindow.webContents.send('update-resizer', chatHeight);
 }
 
+
 app.whenReady().then(() => {
+  if (typeof appSettings.navPanelCollapsed === 'boolean') {
+    navPanelCollapsed = appSettings.navPanelCollapsed;
+  }
+  ipcMain.on('toggle-nav-panel', () => {
+    navPanelCollapsed = !navPanelCollapsed;
+    appSettings.navPanelCollapsed = navPanelCollapsed;
+    saveSettingsDebounced();
+    const bounds = mainWindow.getBounds();
+    if (navPanelCollapsed) {
+      mainWindow.setBounds({
+        width: Math.max(bounds.width - NAV_PANEL_WIDTH, 800),
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y
+      });
+    } else {
+      mainWindow.setBounds({
+        width: bounds.width + NAV_PANEL_WIDTH,
+        height: bounds.height,
+        x: bounds.x,
+        y: bounds.y
+      });
+    }
+    updateBounds();
+    navView.webContents.send('nav-panel-collapsed', navPanelCollapsed);
+  });
+
   const savedBounds = appSettings.mainWindow || {};
   mainWindow = new BrowserWindow({
     width: savedBounds.width || 1100,
@@ -175,7 +221,6 @@ app.whenReady().then(() => {
     },
     title: `LostKit 2 v${version} - by LostHQ Team`
   });
-
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
@@ -195,7 +240,8 @@ app.whenReady().then(() => {
 
   chatView = new WebContentsView({
     webPreferences: {
-      webSecurity: false
+      webSecurity: false,
+      preload: path.join(__dirname, 'preload-zoom-shared.js')
     }
   });
   chatView.webContents.loadURL('https://irc.losthq.rs');
@@ -205,6 +251,12 @@ app.whenReady().then(() => {
   });
   mainWindow.contentView.addChildView(chatView);
   chatView.setVisible(true);
+  // Restore chat zoom if present
+  if (appSettings.chatZoom && appSettings.chatZoom !== 1) {
+    chatView.webContents.once('did-finish-load', () => {
+      try { chatView.webContents.setZoomFactor(appSettings.chatZoom); } catch (e) {}
+    });
+  }
 
   const mainView = new WebContentsView({
     webPreferences: {
@@ -228,6 +280,12 @@ app.whenReady().then(() => {
   if (appSettings.zoomFactor && appSettings.zoomFactor !== 1) {
     mainView.webContents.once('did-finish-load', () => {
       try { mainView.webContents.setZoomFactor(appSettings.zoomFactor); } catch (e) {}
+    });
+  }
+  // Restore per-tab zoom for main tab if present
+  if (appSettings.tabZoom && appSettings.tabZoom[startWorldUrl]) {
+    mainView.webContents.once('did-finish-load', () => {
+      try { mainView.webContents.setZoomFactor(appSettings.tabZoom[startWorldUrl]); } catch (e) {}
     });
   }
 
@@ -742,6 +800,20 @@ app.whenReady().then(() => {
         appSettings.zoomFactor = newFactor;
         saveSettingsDebounced();
       }
+      // Save per-tab zoom for navitem tabs
+      if (pv && pv.id !== 'main') {
+        const tab = tabs.find(t => t.id === pv.id);
+        if (tab && tab.url) {
+          if (!appSettings.tabZoom) appSettings.tabZoom = {};
+          appSettings.tabZoom[tab.url] = newFactor;
+          saveSettingsDebounced();
+        }
+      }
+      // Save chat zoom if sender is chatView
+      if (chatView && senderWC.id === chatView.webContents.id) {
+        appSettings.chatZoom = newFactor;
+        saveSettingsDebounced();
+      }
       log.info('Zoom applied:', newFactor);
     } catch (e) {
       log.error('zoom-wheel handler error:', e);
@@ -776,7 +848,7 @@ app.whenReady().then(() => {
     tabs.push({ id, url, title });
     tabByUrl.set(url, id);
     const newView = new WebContentsView({
-      webPreferences: { webSecurity: false }
+      webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') }
     });
     newView.webContents.loadURL(url);
     newView.webContents.setWindowOpenHandler(({ url }) => {
@@ -785,6 +857,13 @@ app.whenReady().then(() => {
     });
     mainWindow.contentView.addChildView(newView);
     primaryViews.push({ id, view: newView });
+
+    // Restore per-tab zoom if present
+    if (appSettings.tabZoom && appSettings.tabZoom[url]) {
+      newView.webContents.once('did-finish-load', () => {
+        try { newView.webContents.setZoomFactor(appSettings.tabZoom[url]); } catch (e) {}
+      });
+    }
 
     primaryViews.forEach(({ view }) => view.setVisible(false));
     newView.setVisible(true);
@@ -912,12 +991,18 @@ app.whenReady().then(() => {
       x: extBounds.x != null ? extBounds.x : undefined,
       y: extBounds.y != null ? extBounds.y : undefined,
       title: title || url,
-      webPreferences: { webSecurity: false }
+      webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') }
     });
     win.loadURL(url);
     win.setMenuBarVisibility(false);
     externalWindowsByUrl.set(url, win);
     if (!appSettings.externalWindows) appSettings.externalWindows = {};
+    // Restore zoom for this external window if present
+    if (appSettings.externalZoom && appSettings.externalZoom[url]) {
+      win.webContents.once('did-finish-load', () => {
+        try { win.webContents.setZoomFactor(appSettings.externalZoom[url]); } catch (e) {}
+      });
+    }
     const saveExternalBounds = () => {
       if (win && !win.isDestroyed() && !win.isMinimized()) {
         const bounds = win.getBounds();
@@ -929,6 +1014,18 @@ app.whenReady().then(() => {
     win.on('moved', saveExternalBounds);
     win.on('closed', () => {
       if (externalWindowsByUrl.get(url) === win) externalWindowsByUrl.delete(url);
+    });
+    // Listen for zoom-wheel events from this window
+    win.webContents.on('ipc-message', (event, channel, data) => {
+      if (channel === 'zoom-wheel' && data && typeof data.deltaY === 'number') {
+        const zoomIn = data.deltaY < 0;
+        const cur = win.webContents.getZoomFactor();
+        const newFactor = Math.max(0.5, Math.min(3, zoomIn ? cur * 1.1 : cur / 1.1));
+        win.webContents.setZoomFactor(newFactor);
+        if (!appSettings.externalZoom) appSettings.externalZoom = {};
+        appSettings.externalZoom[url] = newFactor;
+        saveSettingsDebounced();
+      }
     });
   });
 });

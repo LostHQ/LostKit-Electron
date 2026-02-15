@@ -4,14 +4,49 @@
   <link rel="stylesheet" type="text/css" href="main.css" />
 </head>
 <body>
-  <div id="tabs">
-    <div class="tab active" data-id="main">W2 HD</div>
+  <div id="tabs-bar" style="width: 100%; display: flex; align-items: stretch;">
+    <div id="tabs" style="overflow-x: auto; white-space: nowrap; flex: 1 1 auto; display: flex; align-items: stretch;">
+      <button id="nav-panel-toggle" style="display: flex; align-items: center; justify-content: center; font-size: 22px; border: none; background: #8b6914; color: #fff; border-radius: 8px 0 0 8px; width: 36px; height: 36px; cursor: pointer; margin-right: 4px; transition: background 0.2s;">&gt;</button>
+      <div class="tab active" data-id="main">W2 HD</div>
+    </div>
   </div>
   <div id="chat-resizer"></div>
   <script>
     const { ipcRenderer } = require('electron');
 
     let currentTab = 'main';
+    let navPanelCollapsed = false;
+
+    const navPanelToggleBtn = document.getElementById('nav-panel-toggle');
+    function setNavPanelToggleState(collapsed) {
+      navPanelToggleBtn.textContent = collapsed ? '<' : '>';
+      navPanelToggleBtn.style.alignItems = 'center';
+      navPanelToggleBtn.style.justifyContent = 'center';
+      navPanelToggleBtn.style.background = collapsed ? 'transparent' : '#8b6914';
+      navPanelToggleBtn.style.color = collapsed ? '#8b6914' : '#fff';
+      navPanelToggleBtn.style.border = collapsed ? '2px solid #8b6914' : 'none';
+
+      // Actually hide/show the nav panel
+      const navPanel = document.getElementById('nav-panel');
+      if (navPanel) {
+        if (collapsed) {
+          navPanel.style.display = 'none';
+        } else {
+          navPanel.style.display = '';
+        }
+      }
+    }
+    navPanelToggleBtn.onclick = () => {
+      navPanelCollapsed = !navPanelCollapsed;
+      setNavPanelToggleState(navPanelCollapsed);
+      require('electron').ipcRenderer.send('toggle-nav-panel');
+    };
+    require('electron').ipcRenderer.on('nav-panel-collapsed', (event, collapsed) => {
+      navPanelCollapsed = collapsed;
+      setNavPanelToggleState(collapsed);
+    });
+    // Set initial state (in case of reload)
+    setNavPanelToggleState(navPanelCollapsed);
 
     document.getElementById('tabs').addEventListener('click', (e) => {
       if (e.target.classList.contains('close')) {

@@ -38,6 +38,13 @@ function displayWorlds() {
         }
     });
 
+    // Calculate total players for filtered worlds
+    const totalPlayers = filteredWorlds.reduce((sum, world) => sum + (parseInt(world.count) || 0), 0);
+    const totalPlayersDiv = document.getElementById('total-players');
+    if (totalPlayersDiv) {
+        totalPlayersDiv.textContent = `Total players: ${totalPlayers}`;
+    }
+
     filteredWorlds.forEach(world => {
         const item = document.createElement('div');
         item.className = 'world-item';

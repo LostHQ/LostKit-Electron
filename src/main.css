@@ -415,8 +415,9 @@ button:active, .btn:active {
 .world-players {
     font-size: 12px;
     color: #f0e68c;
-    text-align: center;
+    text-align: left;
     margin-top: 4px;
+    margin-left: 8px;
 }
 
 .world-latency {
@@ -618,7 +619,6 @@ button:active, .btn:active {
 }
 
 .world-players {
-    margin-left: auto;
     font-family: 'RS-Plain', sans-serif;
     opacity: 0.9;
 }

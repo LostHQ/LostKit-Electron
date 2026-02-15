@@ -4,7 +4,7 @@
     <link rel="stylesheet" type="text/css" href="main.css" />
 </head>
 <body>
-    <div class="nav">
+    <div class="nav" id="nav-panel">
         <div class="nav-button special-link" onclick="openNav('worldswitcher')">
             <img src="assets/LostCity.png" class="nav-icon">
             <span>Switch World</span>
@@ -73,6 +73,14 @@
         function toggleChat() { ipcRenderer.send('toggle-chat'); }
         function openExternal(url, title) { ipcRenderer.send('open-external', url, title); }
         function openNotes() { ipcRenderer.invoke('open-notes'); }
+
+        function toggleNavPanel() {
+            ipcRenderer.send('toggle-nav-panel');
+        }
+        ipcRenderer.on('nav-panel-collapsed', (event, collapsed) => {
+            const icon = document.getElementById('nav-toggle-icon');
+            if (icon) icon.textContent = collapsed ? '⮜' : '⮞';
+        });
     </script>
 </body>
 </html>
