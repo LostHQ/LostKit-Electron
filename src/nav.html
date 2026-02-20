@@ -5,6 +5,17 @@
 </head>
 <body>
     <div class="nav" id="nav-panel">
+        <div class="nav-buttons-top">
+            <div class="nav-button screenshot-btn" onclick="captureScreenshot()" title="Capture Screenshot">
+                <img src="assets/capture.png" class="nav-icon">
+            </div>
+            <div class="nav-button screenshot-btn" onclick="openScreenshotFolder()" title="Open Screenshot Folder">
+                <img src="assets/folder.png" class="nav-icon">
+            </div>
+            <div class="nav-button screenshot-btn" onclick="openSettingsPopup()" title="Settings">
+                <img src="assets/settings.png" class="nav-icon">
+            </div>
+        </div>
         <div class="nav-button special-link" onclick="openNav('worldswitcher')">
             <img src="assets/LostCity.png" class="nav-icon">
             <span>Switch World</span>
@@ -73,6 +84,19 @@
         function toggleChat() { ipcRenderer.send('toggle-chat'); }
         function openExternal(url, title) { ipcRenderer.send('open-external', url, title); }
         function openNotes() { ipcRenderer.invoke('open-notes'); }
+
+        // Screenshot functions
+        function captureScreenshot() {
+            ipcRenderer.send('capture-screenshot');
+        }
+
+        function openScreenshotFolder() {
+            ipcRenderer.send('open-screenshot-folder');
+        }
+
+        function openSettingsPopup() {
+            ipcRenderer.send('open-settings-popup');
+        }
 
         function toggleNavPanel() {
             ipcRenderer.send('toggle-nav-panel');

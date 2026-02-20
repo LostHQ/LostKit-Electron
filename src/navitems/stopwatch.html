@@ -103,6 +103,29 @@
             </div>
         </div>
 
+        <!-- AFK Mode Options -->
+        <div class="panel-section" id="afk-mode-options">
+            <div class="section-title">AFK Mode Options</div>
+            
+            <div class="setting-row">
+                <label>Game Click:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="afk-game-click-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Reset AFK timer on game click</span>
+                </label>
+            </div>
+            
+            <div class="setting-row" id="afk-input-type-row">
+                <label>Input Type:</label>
+                <select id="afk-input-type-select" style="padding: 4px 8px; background: #2a2a2a; border: 2px solid #8b6914; border-radius: 3px; color: #f0e68c; font-family: 'RS-Plain', sans-serif; font-size: 12px;">
+                    <option value="mouse">Mouse Only</option>
+                    <option value="both">Mouse + Keyboard</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Shared Notifications Section (for all modes) -->
         <div class="panel-section">
             <div class="section-title">Notifications</div>
             
@@ -145,14 +168,6 @@
                     <input type="checkbox" id="auto-loop-checkbox">
                     <span class="sound-checkmark"></span>
                     <span>Restart timer automatically</span>
-                </label>
-            </div>
-            <div class="setting-row">
-                <label>Game Click:</label>
-                <label class="sound-checkbox-label">
-                    <input type="checkbox" id="afk-game-click-checkbox">
-                    <span class="sound-checkmark"></span>
-                    <span>Reset AFK timer on game click</span>
                 </label>
             </div>
         </div>

@@ -8,6 +8,7 @@ let soundAlert = false;
 let soundVolume = 60; // Increased default for background notifications
 let autoLoop = false;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
+let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
 let customSoundPath = ''; // NEW: Path to custom sound file
 let alertThreshold = 10; // NEW: Seconds before end to alert (default 10s)
 let color = '#00ff00';
@@ -41,8 +42,26 @@ const colorPicker = document.getElementById('color-picker');
 const opacitySlider = document.getElementById('opacity-slider');
 const opacityValue = document.getElementById('opacity-value');
 const afkGameClickCheckbox = document.getElementById('afk-game-click-checkbox');
+const afkInputTypeSelect = document.getElementById('afk-input-type-select');
+const afkInputTypeRow = document.getElementById('afk-input-type-row');
 const customSoundInput = document.getElementById('custom-sound-input');
 const customSoundLabel = document.getElementById('custom-sound-label');
+
+// Mode-specific option panels
+const afkModeOptions = document.getElementById('afk-mode-options');
+
+// Update visibility of mode-specific options
+function updateModeOptionsVisibility() {
+    // Hide all mode-specific options first
+    if (afkModeOptions) afkModeOptions.style.display = 'none';
+    
+    // Show options based on current mode
+    if (currentMode === 'afk') {
+        if (afkModeOptions) afkModeOptions.style.display = 'block';
+    }
+    
+    // Countdown settings are shown in setMode function already
+}
 
 // Sound management functions
 function openSoundManager() {
@@ -150,6 +169,7 @@ function saveConfig() {
         soundVolume,
         autoLoop,
         afkGameClick,
+        afkInputType,
         customSoundFilename: customSoundPath ? path.basename(customSoundPath) : '',
         alertThreshold,
         color,
@@ -174,6 +194,7 @@ function loadConfig() {
             soundVolume = config.soundVolume ?? soundVolume;
             autoLoop = config.autoLoop ?? autoLoop;
             afkGameClick = config.afkGameClick ?? afkGameClick;
+            afkInputType = config.afkInputType ?? afkInputType;
             
             // Handle custom sound - if filename is stored, reconstruct full path
             if (config.customSoundFilename) {
@@ -358,6 +379,11 @@ startBtn.addEventListener('click', () => {
         clearInterval(interval);
         startBtn.textContent = 'Start';
         running = false;
+        
+        // Also pause the background timer if Game Click is enabled
+        if (afkGameClick && currentMode === 'afk') {
+            ipcRenderer.send('pause-game-click-timer');
+        }
     } else {
         if ((currentMode === 'afk' || currentMode === 'countdown') && seconds >= (currentMode === 'afk' ? 90 : countdownTime)) {
             seconds = 0;
@@ -367,6 +393,11 @@ startBtn.addEventListener('click', () => {
         interval = setInterval(tick, 1000);
         startBtn.textContent = 'Pause';
         running = true;
+        
+        // Also resume the background timer if Game Click is enabled
+        if (afkGameClick && currentMode === 'afk') {
+            ipcRenderer.send('resume-game-click-timer');
+        }
     }
 });
 
@@ -408,6 +439,16 @@ function setMode(mode) {
         startBtn.textContent = 'Start';
     }
     
+    // Stop background timer when switching away from AFK mode
+    if (mode !== 'afk' && afkGameClick) {
+        ipcRenderer.send('pause-game-click-timer');
+    }
+    
+    // Resume background timer when switching to AFK mode
+    if (mode === 'afk' && afkGameClick) {
+        ipcRenderer.send('resume-game-click-timer');
+    }
+    
     seconds = 0;
     soundPlayed = false;
     
@@ -430,6 +471,9 @@ function setMode(mode) {
         timerDisplay.textContent = '00:00';
         timerDisplay.style.color = color;
     }
+    
+    // Show/hide mode-specific options
+    updateModeOptionsVisibility();
 }
 
 afkBtn.addEventListener('click', () => setMode('afk'));
@@ -529,6 +573,14 @@ afkGameClickCheckbox.addEventListener('change', () => {
     saveConfig();
     console.log('nav panel: afkGameClick changed ->', afkGameClick);
     ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
+});
+
+// AFK Input Type select
+afkInputTypeSelect.addEventListener('change', () => {
+    afkInputType = afkInputTypeSelect.value;
+    saveConfig();
+    console.log('nav panel: afkInputType changed ->', afkInputType);
+    ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
 });
 
 // Volume slider
@@ -641,11 +693,17 @@ alertThresholdInput.value = alertThreshold;
 volumeSlider.value = soundVolume;
 volumeValue.textContent = `${soundVolume}%`;
 afkGameClickCheckbox.checked = afkGameClick;
+if (afkInputTypeSelect) {
+    afkInputTypeSelect.value = afkInputType;
+}
 if (customSoundPath) {
     const soundFileName = path.basename(customSoundPath);
     customSoundLabel.textContent = 'Custom Sound: ' + soundFileName;
     console.log('Loaded custom sound:', soundFileName);
 }
+
+// Initialize mode options visibility
+updateModeOptionsVisibility();
 
 // Refresh sound list display
 refreshSoundList();
@@ -666,6 +724,7 @@ ipcRenderer.invoke('get-game-click-timer-state').then((state) => {
 
 // Inform main process of current settings on load so background timer works
 ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
+ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
 ipcRenderer.send('update-stopwatch-setting', 'alertThreshold', alertThreshold);
 ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
 ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);

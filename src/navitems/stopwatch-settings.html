@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <style>
+        @font-face {
+            font-family: 'RS-Quill';
+            src: url('../assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+        }
+
+        body {
+            background: #1a1a1a;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            padding: 16px;
+            margin: 0;
+        }
+
+        .settings-container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .settings-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #8b6914;
+            text-align: center;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .setting-row label {
+            min-width: 120px;
+            font-size: 12px;
+        }
+
+        .setting-row input[type="text"] {
+            flex: 1;
+            padding: 6px;
+            background: #2a2a2a;
+            border: 2px solid #8b6914;
+            border-radius: 3px;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 11px;
+            min-width: 150px;
+        }
+
+        .range-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .range-wrapper input[type="range"] {
+            flex: 1;
+        }
+
+        .range-value {
+            min-width: 50px;
+            text-align: right;
+            font-size: 12px;
+        }
+
+        .sound-checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #f0e68c;
+            flex: 1;
+        }
+
+        .sound-checkbox-label input[type="checkbox"] {
+            display: none;
+        }
+
+        .sound-checkmark {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #8b6914;
+            border-radius: 3px;
+            background: #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark {
+            background: #4a90e2;
+            border-color: #4a90e2;
+        }
+
+        .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark::after {
+            content: '✓';
+            color: white;
+            font-size: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: url('../assets/button.jpg') repeat;
+            background-size: cover;
+            border: 2px outset #8b6914;
+            border-radius: 4px;
+            color: #f0e68c;
+            font-weight: bold;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+
+        button:hover {
+            border: 2px inset #8b6914;
+            background-color: rgba(139, 105, 20, 0.3);
+            transform: translateY(1px);
+        }
+
+        button:active {
+            border: 2px inset #8b6914;
+            transform: translateY(2px);
+        }
+
+        .status-text {
+            font-size: 11px;
+            color: #888;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .status-text.active {
+            color: #51cf66;
+        }
+
+        .folder-section {
+            padding: 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .section-label {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #ffd700;
+        }
+    </style>
+</head>
+<body>
+    <div class="settings-container">
+        <div class="settings-title">Screenshot Settings</div>
+
+        <!-- Adventure Capture Section -->
+        <div class="folder-section">
+            <div class="section-label">Adventure Capture</div>
+            
+            <div class="setting-row">
+                <label>Enable:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="adventure-capture-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Auto-capture screenshots</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Screenshot Folder Section -->
+        <div class="folder-section">
+            <div class="section-label">Screenshot Folder</div>
+            
+            <div class="setting-row">
+                <label>Folder Path:</label>
+                <div style="display: flex; gap: 4px; flex: 1;">
+                    <input type="text" id="screenshot-folder-input" readonly placeholder="Click button to select">
+                    <button onclick="selectFolder()" title="Select Folder">📁</button>
+                </div>
+            </div>
+            
+            <div class="setting-row">
+                <label>Create Subfolder:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="create-adventure-folder-checkbox" checked>
+                    <span class="sound-checkmark"></span>
+                    <span>Create "Adventure Capture" folder</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Capture Interval Section -->
+        <div class="folder-section">
+            <div class="section-label">Capture Interval</div>
+            
+            <div class="setting-row">
+                <label>Interval:</label>
+                <div class="range-wrapper">
+                    <input type="range" id="capture-interval-slider" min="10" max="300" value="60" step="10">
+                    <span class="range-value" id="capture-interval-value">60s</span>
+                </div>
+            </div>
+            
+            <div class="setting-row">
+                <label>Random:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="random-interval-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Capture at random moments</span>
+                </label>
+            </div>
+            
+            <div class="status-text" id="capture-status">Not capturing</div>
+        </div>
+
+        <div style="text-align: center; margin-top: 16px;">
+            <button onclick="closeWindow()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // Elements
+        const adventureCaptureCheckbox = document.getElementById('adventure-capture-checkbox');
+        const screenshotFolderInput = document.getElementById('screenshot-folder-input');
+        const captureIntervalSlider = document.getElementById('capture-interval-slider');
+        const captureIntervalValue = document.getElementById('capture-interval-value');
+        const randomIntervalCheckbox = document.getElementById('random-interval-checkbox');
+        const createAdventureFolderCheckbox = document.getElementById('create-adventure-folder-checkbox');
+        const captureStatus = document.getElementById('capture-status');
+        
+        // State
+        let adventureCaptureEnabled = false;
+        let screenshotFolder = '';
+        let captureInterval = 60;
+        let randomInterval = false;
+        let createAdventureFolder = true;
+
+        // Load settings from main process
+        ipcRenderer.on('load-settings', (event, settings) => {
+            adventureCaptureEnabled = settings.adventureCaptureEnabled || false;
+            screenshotFolder = settings.screenshotFolder || '';
+            captureInterval = settings.captureInterval || 60;
+            randomInterval = settings.randomInterval || false;
+            createAdventureFolder = settings.createAdventureFolder !== false;
+
+            // Update UI
+            adventureCaptureCheckbox.checked = adventureCaptureEnabled;
+            screenshotFolderInput.value = screenshotFolder;
+            captureIntervalSlider.value = captureInterval;
+            captureIntervalValue.textContent = captureInterval + 's';
+            randomIntervalCheckbox.checked = randomInterval;
+            createAdventureFolderCheckbox.checked = createAdventureFolder;
+
+            updateStatus();
+        });
+
+        function updateStatus() {
+            if (adventureCaptureEnabled) {
+                if (randomInterval) {
+                    captureStatus.textContent = 'Capturing randomly...';
+                } else {
+                    captureStatus.textContent = 'Capturing every ' + captureInterval + 's';
+                }
+                captureStatus.className = 'status-text active';
+            } else {
+                captureStatus.textContent = 'Not capturing';
+                captureStatus.className = 'status-text';
+            }
+        }
+
+        function selectFolder() {
+            ipcRenderer.invoke('select-screenshot-folder').then((folderPath) => {
+                if (folderPath) {
+                    screenshotFolder = folderPath;
+                    screenshotFolderInput.value = folderPath;
+                    saveSettings();
+                }
+            }).catch(err => console.log('Error selecting folder:', err));
+        }
+
+        function saveSettings() {
+            ipcRenderer.send('update-stopwatch-settings', {
+                adventureCaptureEnabled,
+                screenshotFolder,
+                captureInterval,
+                randomInterval,
+                createAdventureFolder
+            });
+            updateStatus();
+        }
+
+        // Event handlers
+        adventureCaptureCheckbox.addEventListener('change', () => {
+            adventureCaptureEnabled = adventureCaptureCheckbox.checked;
+            saveSettings();
+        });
+
+        captureIntervalSlider.addEventListener('input', (e) => {
+            captureInterval = parseInt(e.target.value);
+            captureIntervalValue.textContent = captureInterval + 's';
+        });
+
+        captureIntervalSlider.addEventListener('change', () => {
+            saveSettings();
+        });
+
+        randomIntervalCheckbox.addEventListener('change', () => {
+            randomInterval = randomIntervalCheckbox.checked;
+            saveSettings();
+        });
+
+        createAdventureFolderCheckbox.addEventListener('change', () => {
+            createAdventureFolder = createAdventureFolderCheckbox.checked;
+            saveSettings();
+        });
+
+        function closeWindow() {
+            window.close();
+        }
+
+        // Request settings on load
+        ipcRenderer.send('request-stopwatch-settings');
+    </script>
+</body>
+</html>

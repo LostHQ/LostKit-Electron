@@ -9,6 +9,7 @@ const NAV_PANEL_WIDTH = 250;
 
 // Track nav panel collapsed state
 let navPanelCollapsed = false;
+let navPanelPrevX = null; // Store previous X position if shifted for panel
 
 // ...existing code...
 
@@ -82,7 +83,8 @@ let appSettings = {
   chatVisible: true,
   lastWorld: { url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' },
   soundManagerWindow: { width: 450, height: 500 },
-  notesWindow: { width: 500, height: 600 }
+  notesWindow: { width: 500, height: 600 },
+  screenshotFolder: '' // Path to custom screenshot folder
 };
 
 function loadSettings() {
@@ -118,6 +120,7 @@ if (require('electron-squirrel-startup')) {
 
 let mainWindow;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
+let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
 let soundAlert = false; // Whether sound alerts are enabled
 let soundVolume = 60; // Sound volume level
 let customSoundPath = ''; // Path to custom sound file
@@ -125,6 +128,7 @@ let customSoundPath = ''; // Path to custom sound file
 let gameClickTimerRunning = false;
 let gameClickTimerInterval = null;
 let gameClickTimerSeconds = 0;
+let gameClickAlertTriggeredInCycle = false;
 let alertThreshold = 10; // Seconds before 90 to alert
 let primaryViews = [];
 let navView;
@@ -145,7 +149,48 @@ let chatHeightValue = 300;
 // Load settings early
 loadSettings();
 chatHeightValue = appSettings.chatHeight || 300;
+
+// Load sound settings at startup for background AFK timer
+async function loadSoundSettings() {
+  try {
+    const soundsDir = path.join(process.env.APPDATA || path.join(process.env.HOME || process.env.USERPROFILE, '.config'), 'LostKit', 'sounds');
+    const configPath = path.join(process.env.APPDATA || process.env.HOME, '.lostkit-stopwatch-config.json');
+    const fsPromises = require('fs').promises;
+    const configData = await fsPromises.readFile(configPath, 'utf8');
+    const config = JSON.parse(configData);
+    soundAlert = config.soundAlert || false;
+    soundVolume = config.soundVolume || 60;
+    if (config.customSoundFilename) {
+      customSoundPath = path.normalize(path.join(soundsDir, config.customSoundFilename));
+    }
+    console.log('Sound settings loaded at startup:', { soundAlert, soundVolume, customSoundPath });
+  } catch (e) {
+    // Config not found or error reading, use defaults
+    console.log('Sound settings not found, using defaults');
+  }
+}
+
+// Load sound settings asynchronously after app starts
+loadSoundSettings();
 chatVisible = appSettings.chatVisible !== false;
+
+// Get screenshot folder path (use Pictures folder as default)
+function getScreenshotFolder() {
+  let folder = appSettings.screenshotFolder;
+  if (!folder) {
+    folder = path.join(app.getPath('pictures'), 'LostKit Screenshots');
+  }
+  // Create folder if it doesn't exist
+  if (!fs.existsSync(folder)) {
+    try {
+      fs.mkdirSync(folder, { recursive: true });
+    } catch (e) {
+      log.error('Failed to create screenshot folder:', e);
+      folder = app.getPath('pictures');
+    }
+  }
+  return folder;
+}
 
 // Apply saved last world
 if (appSettings.lastWorld && appSettings.lastWorld.url) {
@@ -189,18 +234,46 @@ app.whenReady().then(() => {
     appSettings.navPanelCollapsed = navPanelCollapsed;
     saveSettingsDebounced();
     const bounds = mainWindow.getBounds();
+    const { screen } = require('electron');
+    log.info('--- NAV PANEL TOGGLE ---');
+    // Use the existing 'bounds' variable already declared above
+    const display = screen.getDisplayMatching(bounds);
+    const rightEdge = bounds.x + bounds.width;
+    const displayRight = display.workArea.x + display.workArea.width;
+    log.info('Window bounds:', bounds);
+    log.info('Display workArea:', display.workArea);
+    log.info('Right edge:', rightEdge, 'Display right:', displayRight);
     if (navPanelCollapsed) {
+      // If we previously shifted the window for expansion, restore its X position
+      let restoreX = bounds.x;
+      if (navPanelPrevX !== null) {
+        log.info('Restoring previous X position after collapse:', navPanelPrevX);
+        restoreX = navPanelPrevX;
+        navPanelPrevX = null;
+      }
       mainWindow.setBounds({
         width: Math.max(bounds.width - NAV_PANEL_WIDTH, 800),
         height: bounds.height,
-        x: bounds.x,
+        x: restoreX,
         y: bounds.y
       });
     } else {
+      // If expanding would go off-screen, shift left just enough to keep window visible
+      let newX = bounds.x;
+      const expandedRight = bounds.x + bounds.width + NAV_PANEL_WIDTH;
+      if (expandedRight > displayRight) {
+        // Store previous X so we can restore it on collapse
+        navPanelPrevX = bounds.x;
+        newX = bounds.x - (expandedRight - displayRight);
+        log.info('Shifting window left by', (expandedRight - displayRight), 'to keep expanded window visible. Storing previous X:', navPanelPrevX);
+      } else {
+        navPanelPrevX = null;
+        log.info('Expanding window right as usual.');
+      }
       mainWindow.setBounds({
         width: bounds.width + NAV_PANEL_WIDTH,
         height: bounds.height,
-        x: bounds.x,
+        x: newX,
         y: bounds.y
       });
     }
@@ -224,10 +297,220 @@ app.whenReady().then(() => {
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
+  // Screenshot IPC handlers
+  ipcMain.handle('select-screenshot-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Screenshot Folder'
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      const folder = result.filePaths[0];
+      appSettings.screenshotFolder = folder;
+      saveSettingsDebounced();
+      // Notify options window if open
+      mainWindow.webContents.send('screenshot-folder-updated', folder);
+      return folder;
+    }
+    return null;
+  });
+
+  ipcMain.handle('get-screenshot-folder', () => {
+    return getScreenshotFolder();
+  });
+
+  ipcMain.on('open-screenshot-folder', () => {
+    const folder = getScreenshotFolder();
+    shell.openPath(folder);
+  });
+
+  ipcMain.on('capture-screenshot', () => {
+    // Request screenshot from the main game view
+    const mainPV = primaryViews.find(p => p.id === currentTab);
+    if (mainPV && mainPV.view.webContents) {
+      mainPV.view.webContents.send('request-screenshot');
+    }
+  });
+
+  // Settings popup handler
+  let settingsWindow = null;
+  ipcMain.on('open-settings-popup', () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.focus();
+      return;
+    }
+
+    const settingsBounds = appSettings.settingsWindow || { width: 600, height: 500 };
+    settingsWindow = new BrowserWindow({
+      width: settingsBounds.width || 600,
+      height: settingsBounds.height || 500,
+      x: settingsBounds.x != null ? settingsBounds.x : undefined,
+      y: settingsBounds.y != null ? settingsBounds.y : undefined,
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false
+      },
+      title: 'LostKit - Settings'
+    });
+
+    settingsWindow.loadFile(path.join(__dirname, 'navitems/stopwatch-settings.html'));
+
+    // Save settings window bounds on resize/move
+    const saveSettingsBounds = () => {
+      if (settingsWindow && !settingsWindow.isDestroyed() && !settingsWindow.isMinimized()) {
+        const bounds = settingsWindow.getBounds();
+        appSettings.settingsWindow = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y };
+        saveSettings();
+      }
+    };
+    settingsWindow.on('resize', saveSettingsBounds);
+    settingsWindow.on('move', saveSettingsBounds);
+
+    settingsWindow.on('closed', () => {
+      settingsWindow = null;
+    });
+
+    // Send settings to the settings window when loaded
+    settingsWindow.webContents.on('did-finish-load', () => {
+      settingsWindow.webContents.send('load-settings', {
+        adventureCaptureEnabled: appSettings.adventureCaptureEnabled || false,
+        screenshotFolder: appSettings.screenshotFolder || '',
+        captureInterval: appSettings.captureInterval || 60,
+        randomInterval: appSettings.randomInterval || false,
+        createAdventureFolder: appSettings.createAdventureFolder !== false
+      });
+    });
+  });
+
+  // Handle stopwatch settings updates
+  ipcMain.on('update-stopwatch-settings', (event, settings) => {
+    appSettings.adventureCaptureEnabled = settings.adventureCaptureEnabled;
+    appSettings.screenshotFolder = settings.screenshotFolder;
+    appSettings.captureInterval = settings.captureInterval;
+    appSettings.randomInterval = settings.randomInterval;
+    appSettings.createAdventureFolder = settings.createAdventureFolder;
+    saveSettings();
+
+    // Update adventure capture timer
+    updateAdventureCapture();
+  });
+
+  // Adventure Capture functionality
+  let adventureCaptureTimer = null;
+
+  function updateAdventureCapture() {
+    // Clear existing timer
+    if (adventureCaptureTimer) {
+      clearTimeout(adventureCaptureTimer);
+      adventureCaptureTimer = null;
+    }
+
+    // Check if adventure capture is enabled
+    if (!appSettings.adventureCaptureEnabled || !appSettings.screenshotFolder) {
+      return;
+    }
+
+    // Schedule next capture
+    scheduleAdventureCapture();
+  }
+
+  function scheduleAdventureCapture() {
+    if (!appSettings.adventureCaptureEnabled) return;
+
+    let delay;
+    if (appSettings.randomInterval) {
+      // Truly random delay: use the capture interval as a base, but add significant variance
+      // Minimum: 10 seconds, Maximum: 3x the capture interval (or at least 5 minutes)
+      const baseInterval = (appSettings.captureInterval || 60) * 1000;
+      const minDelay = 10000; // 10 seconds minimum
+      const maxDelay = Math.max(baseInterval * 3, 300000); // 3x interval or 5 minutes, whichever is larger
+      
+      // Use a combination of random factors for more unpredictable timing
+      // This creates a non-uniform distribution that feels more "random"
+      const randomFactor1 = Math.random();
+      const randomFactor2 = Math.random();
+      const combinedRandom = (randomFactor1 + randomFactor2) / 2; // Average of two randoms for smoother distribution
+      
+      delay = Math.floor(minDelay + combinedRandom * (maxDelay - minDelay));
+    } else {
+      delay = (appSettings.captureInterval || 60) * 1000;
+    }
+
+    adventureCaptureTimer = setTimeout(() => {
+      captureAdventureScreenshot();
+      // Schedule next capture
+      scheduleAdventureCapture();
+    }, delay);
+  }
+
+  function captureAdventureScreenshot() {
+    const mainPV = primaryViews.find(p => p.id === currentTab);
+    if (mainPV && mainPV.view.webContents) {
+      mainPV.view.webContents.send('request-adventure-screenshot');
+    }
+  }
+
+  // Handle adventure screenshot data from renderer
+  ipcMain.on('save-adventure-screenshot', (event, dataUrl) => {
+    if (!dataUrl || !appSettings.screenshotFolder) return;
+
+    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    const timestamp = new Date();
+    const dateStr = timestamp.toISOString().split('T')[0]; // YYYY-MM-DD
+    const timeStr = timestamp.toTimeString().split(' ')[0].replace(/:/g, '-'); // HH-MM-SS
+
+    // Build folder path
+    let folderPath = appSettings.screenshotFolder;
+    if (appSettings.createAdventureFolder) {
+      folderPath = path.join(folderPath, 'Adventure Capture', dateStr);
+    }
+
+    // Ensure folder exists
+    fs.mkdir(folderPath, { recursive: true }, (err) => {
+      if (err) {
+        console.error('Error creating adventure capture folder:', err);
+        return;
+      }
+
+      const filename = `adventure_${timeStr}.png`;
+      const filepath = path.join(folderPath, filename);
+
+      fs.writeFile(filepath, base64Data, 'base64', (err) => {
+        if (err) {
+          console.error('Error saving adventure screenshot:', err);
+        } else {
+          console.log('Adventure screenshot saved:', filepath);
+        }
+      });
+    });
+  });
+
+  // Handle screenshot data from renderer
+  ipcMain.on('save-screenshot', (event, dataUrl) => {
+    if (!dataUrl) return;
+    
+    const folder = getScreenshotFolder();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `screenshot-${timestamp}.png`;
+    const filepath = path.join(folder, filename);
+    
+    // Convert data URL to buffer and save
+    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    try {
+      fs.writeFileSync(filepath, base64Data, 'base64');
+      log.info('Screenshot saved:', filepath);
+    } catch (e) {
+      log.error('Failed to save screenshot:', e);
+    }
+  });
+
   // Check for updates after app starts (lightweight version check)
   setTimeout(() => {
     checkForUpdates();
   }, 3000); // Wait 3 seconds after startup
+
+  // Initialize adventure capture timer after app is ready
+  updateAdventureCapture();
 
   navView = new WebContentsView({
     webPreferences: {
@@ -319,34 +602,43 @@ app.whenReady().then(() => {
     }
     gameClickTimerRunning = true;
     gameClickTimerSeconds = 0;
+    gameClickAlertTriggeredInCycle = false;
     console.log('Starting game-click background timer');
 
     gameClickTimerInterval = setInterval(() => {
-      gameClickTimerSeconds++;
-      
-      // Send update to stopwatch view if it's active
-      if (navView && navView.webContents) {
-        navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
-      }
-
-      // At threshold (e.g., 80 seconds = 90 - 10), trigger alert
-      const thresholdTime = 90 - alertThreshold;
-      if (gameClickTimerSeconds === thresholdTime) {
-        console.log('Game-click timer reached threshold, alerting');
-        triggerGameClickAlert();
-      }
-
-      // At 90 seconds, reset and loop
-      if (gameClickTimerSeconds >= 90) {
-        console.log('Game-click timer reached 90s, looping');
-        gameClickTimerSeconds = 0;
-      }
+      tickGameClickTimer();
     }, 1000);
+  }
+
+  function tickGameClickTimer() {
+    gameClickTimerSeconds++;
+
+    // Send update to stopwatch view if it's active
+    if (navView && navView.webContents) {
+      navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
+    }
+
+    // Trigger once per 90-second cycle when threshold is reached/passed
+    const safeThreshold = Math.max(1, Math.min(89, parseInt(alertThreshold, 10) || 10));
+    const thresholdTime = 90 - safeThreshold;
+    if (!gameClickAlertTriggeredInCycle && gameClickTimerSeconds >= thresholdTime) {
+      gameClickAlertTriggeredInCycle = true;
+      console.log('Game-click timer reached threshold, alerting');
+      triggerGameClickAlert();
+    }
+
+    // At 90 seconds, reset and loop
+    if (gameClickTimerSeconds >= 90) {
+      console.log('Game-click timer reached 90s, looping');
+      gameClickTimerSeconds = 0;
+      gameClickAlertTriggeredInCycle = false;
+    }
   }
 
   function resetGameClickTimer() {
     if (gameClickTimerRunning) {
       gameClickTimerSeconds = 0;
+      gameClickAlertTriggeredInCycle = false;
       console.log('Game-click timer reset to 0');
       if (navView && navView.webContents) {
         navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
@@ -364,6 +656,7 @@ app.whenReady().then(() => {
     }
     gameClickTimerRunning = false;
     gameClickTimerSeconds = 0;
+    gameClickAlertTriggeredInCycle = false;
     console.log('Stopped game-click timer');
   }
 
@@ -371,12 +664,35 @@ app.whenReady().then(() => {
     console.log('Game-click alert triggered - soundAlert:', soundAlert);
     if (!soundAlert) return;
 
-    // Send alert to main window to play sound (always loaded, supports OGG via HTML5 Audio)
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('play-alert-sound', {
-        customSoundPath: customSoundPath,
-        soundVolume: soundVolume
-      });
+    // If a custom sound is configured, only attempt custom playback (no default beep fallback).
+    if (customSoundPath && customSoundPath.trim() !== '') {
+      console.log('Playing custom sound:', customSoundPath);
+      playCustomAlertSound(customSoundPath);
+      return;
+    }
+
+    // No custom sound configured -> use default beep.
+    console.log('Playing default beep');
+    playDefaultBeep();
+  }
+
+  function playCustomAlertSound(filePath) {
+    try {
+      if (!fs.existsSync(filePath)) {
+        console.log('Custom sound file not found:', filePath);
+        return;
+      }
+
+      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('play-alert-sound', {
+          customSoundPath: filePath,
+          soundVolume
+        });
+      } else {
+        console.log('Main window unavailable for custom sound playback');
+      }
+    } catch (e) {
+      console.log('Error sending custom alert sound to main window:', e);
     }
   }
 
@@ -385,6 +701,13 @@ app.whenReady().then(() => {
       const { exec, execFile } = require('child_process');
       const path = require('path');
       const fs = require('fs');
+      
+      // Check if file exists first
+      if (!fs.existsSync(filePath)) {
+        console.log('Custom sound file not found:', filePath);
+        playDefaultBeep();
+        return;
+      }
       
       if (process.platform === 'win32') {
         // On Windows, use PowerShell with Windows Media Player COM object - much more reliable
@@ -405,6 +728,7 @@ app.whenReady().then(() => {
             exec(`powershell -ExecutionPolicy Bypass -Command "${psCommand2}"`, { windowsHide: true }, (err2) => {
               if (err2) {
                 console.log('SoundPlayer fallback also failed:', err2.message);
+                playDefaultBeep();
               } else {
                 console.log('Audio played via SoundPlayer:', filePath);
               }
@@ -453,13 +777,16 @@ app.whenReady().then(() => {
       console.log('Playing default beep on platform:', process.platform);
       
       if (process.platform === 'win32') {
-        // Windows - try multiple methods
-        // Method 1: Using wmic to access system sounds
-        execFile('cmd.exe', ['/c', 'echo ^G'], (err) => {
+        // Windows - reliable system beep methods
+        execFile('powershell.exe', ['-NoProfile', '-Command', '[console]::beep(1000,300)'], { windowsHide: true }, (err) => {
           if (err) {
-            console.log('System beep attempt failed');
+            console.log('Console beep failed, trying SystemSounds fallback');
+            execFile('powershell.exe', ['-NoProfile', '-Command', '[System.Media.SystemSounds]::Asterisk.Play()'], { windowsHide: true }, (err2) => {
+              if (err2) console.log('SystemSounds fallback failed:', err2.message);
+              else console.log('Beep played via SystemSounds');
+            });
           } else {
-            console.log('System beep played');
+            console.log('Beep played via console beep');
           }
         });
       } else if (process.platform === 'darwin') {
@@ -502,10 +829,31 @@ app.whenReady().then(() => {
   ipcMain.on('reset-game-click-timer', () => {
     if (gameClickTimerRunning) {
       gameClickTimerSeconds = 0;
+      gameClickAlertTriggeredInCycle = false;
       console.log('Game-click timer manually reset to 0');
       if (navView && navView.webContents) {
         navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
       }
+    }
+  });
+
+  // Handler for stopwatch panel to pause the background timer
+  ipcMain.on('pause-game-click-timer', () => {
+    if (gameClickTimerRunning && gameClickTimerInterval) {
+      clearInterval(gameClickTimerInterval);
+      gameClickTimerInterval = null;
+      console.log('Game-click timer paused');
+    }
+  });
+
+  // Handler for stopwatch panel to resume the background timer
+  ipcMain.on('resume-game-click-timer', () => {
+    if (afkGameClick && !gameClickTimerInterval) {
+      gameClickTimerRunning = true;
+      gameClickTimerInterval = setInterval(() => {
+        tickGameClickTimer();
+      }, 1000);
+      console.log('Game-click timer resumed');
     }
   });
 
@@ -523,6 +871,10 @@ app.whenReady().then(() => {
           stopGameClickTimer();
         }
       }
+    }
+    if (setting === 'afkInputType') {
+      afkInputType = value || 'mouse';
+      console.log('afkInputType set to', afkInputType);
     }
     if (setting === 'alertThreshold') {
       alertThreshold = parseInt(value) || 10;
@@ -762,8 +1114,8 @@ app.whenReady().then(() => {
     }
   });
 
-  // Handle game view clicks for AFK timer reset - ONLY from main game view
-  ipcMain.on('game-view-clicked', (event) => {
+  // Handle game view mouse clicks for AFK timer reset - ONLY from main game view
+  ipcMain.on('game-view-mouse-clicked', (event) => {
     // Only respond to clicks from the main game view (id: 'main')
     const mainPV = primaryViews.find(pv => pv.id === 'main');
     if (!mainPV || !mainPV.view || !mainPV.view.webContents) return;
@@ -774,7 +1126,29 @@ app.whenReady().then(() => {
     }
     
     if (afkGameClick) {
-      console.log('Main game view clicked, resetting background AFK timer');
+      console.log('Main game view mouse clicked, resetting background AFK timer');
+      resetGameClickTimer();
+      // Also notify stopwatch panel if visible
+      if (navView && navView.webContents) {
+        navView.webContents.send('afk-game-click-reset');
+      }
+    }
+  });
+  
+  // Handle game view keyboard presses for AFK timer reset - ONLY from main game view
+  ipcMain.on('game-view-key-pressed', (event) => {
+    // Only respond to key presses from the main game view (id: 'main')
+    const mainPV = primaryViews.find(pv => pv.id === 'main');
+    if (!mainPV || !mainPV.view || !mainPV.view.webContents) return;
+    
+    // Check if the sender is the main game view
+    if (event.sender.id !== mainPV.view.webContents.id) {
+      return; // Ignore key presses from other windows/views
+    }
+    
+    // Only reset timer if input type is 'both' (mouse + keyboard)
+    if (afkGameClick && afkInputType === 'both') {
+      console.log('Main game view key pressed, resetting background AFK timer (input type: both)');
       resetGameClickTimer();
       // Also notify stopwatch panel if visible
       if (navView && navView.webContents) {
