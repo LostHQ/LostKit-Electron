@@ -223,6 +223,24 @@
             <div class="status-text" id="capture-status">Not capturing</div>
         </div>
 
+        <!-- Screenshot Keybind Section -->
+        <div class="folder-section">
+            <div class="section-label">Screenshot Keybind</div>
+            
+            <div class="setting-row">
+                <label>Key:</label>
+                <div style="display: flex; gap: 4px; flex: 1; align-items: center;">
+                    <input type="text" id="screenshot-keybind-input" readonly placeholder="Click to set keybind"
+                        style="cursor: pointer; text-align: center;">
+                    <button onclick="clearKeybind()" title="Clear Keybind" style="min-width: 28px; padding: 6px 8px;">✕</button>
+                </div>
+            </div>
+            <div class="status-text" id="keybind-status">No keybind set</div>
+            <div class="status-text" style="color: #888; font-size: 10px; margin-top: 4px;">
+                Click the input field, then press any key or combination (e.g. F12, Ctrl+Shift+S)
+            </div>
+        </div>
+
         <div style="text-align: center; margin-top: 16px;">
             <button onclick="closeWindow()">Close</button>
         </div>
@@ -240,12 +258,17 @@
         const createAdventureFolderCheckbox = document.getElementById('create-adventure-folder-checkbox');
         const captureStatus = document.getElementById('capture-status');
         
+        const screenshotKeybindInput = document.getElementById('screenshot-keybind-input');
+        const keybindStatus = document.getElementById('keybind-status');
+
         // State
         let adventureCaptureEnabled = false;
         let screenshotFolder = '';
         let captureInterval = 60;
         let randomInterval = false;
         let createAdventureFolder = true;
+        let screenshotKeybind = '';
+        let isCapturingKeybind = false;
 
         // Load settings from main process
         ipcRenderer.on('load-settings', (event, settings) => {
@@ -329,6 +352,132 @@
         function closeWindow() {
             window.close();
         }
+
+        // --- Screenshot Keybind Logic ---
+
+        // Convert a keyboard event to an Electron accelerator string
+        function keyEventToAccelerator(e) {
+            const parts = [];
+            if (e.ctrlKey) parts.push('CommandOrControl');
+            if (e.altKey) parts.push('Alt');
+            if (e.shiftKey) parts.push('Shift');
+
+            // Map key names to Electron accelerator names
+            const keyMap = {
+                ' ': 'Space',
+                'ArrowUp': 'Up',
+                'ArrowDown': 'Down',
+                'ArrowLeft': 'Left',
+                'ArrowRight': 'Right',
+                'PrintScreen': 'PrintScreen',
+                'Delete': 'Delete',
+                'Insert': 'Insert',
+                'Home': 'Home',
+                'End': 'End',
+                'PageUp': 'PageUp',
+                'PageDown': 'PageDown',
+                'Escape': 'Escape',
+                'Enter': 'Return',
+                'Backspace': 'Backspace',
+                'Tab': 'Tab'
+            };
+
+            let key = e.key;
+
+            // Skip if only modifier keys are pressed
+            if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+                return null;
+            }
+
+            // Function keys
+            if (/^F\d{1,2}$/.test(key)) {
+                parts.push(key);
+            }
+            // Mapped special keys
+            else if (keyMap[key]) {
+                parts.push(keyMap[key]);
+            }
+            // Single character keys (letters, numbers)
+            else if (key.length === 1) {
+                parts.push(key.toUpperCase());
+            }
+            // Other keys - try to use the key name directly
+            else {
+                parts.push(key);
+            }
+
+            return parts.join('+');
+        }
+
+        // Display-friendly version of the accelerator
+        function acceleratorToDisplay(accel) {
+            if (!accel) return '';
+            return accel
+                .replace('CommandOrControl', 'Ctrl')
+                .replace('Return', 'Enter');
+        }
+
+        function updateKeybindStatus() {
+            if (screenshotKeybind) {
+                keybindStatus.textContent = 'Keybind: ' + acceleratorToDisplay(screenshotKeybind);
+                keybindStatus.className = 'status-text active';
+            } else {
+                keybindStatus.textContent = 'No keybind set';
+                keybindStatus.className = 'status-text';
+            }
+        }
+
+        // Click on input to start capturing
+        screenshotKeybindInput.addEventListener('click', () => {
+            isCapturingKeybind = true;
+            screenshotKeybindInput.value = 'Press a key...';
+            screenshotKeybindInput.style.borderColor = '#4a90e2';
+            screenshotKeybindInput.style.background = '#1a2a3a';
+        });
+
+        // Capture the key press
+        screenshotKeybindInput.addEventListener('keydown', (e) => {
+            if (!isCapturingKeybind) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const accel = keyEventToAccelerator(e);
+            if (!accel) return; // Only modifier pressed, wait for actual key
+
+            isCapturingKeybind = false;
+            screenshotKeybind = accel;
+            screenshotKeybindInput.value = acceleratorToDisplay(accel);
+            screenshotKeybindInput.style.borderColor = '#8b6914';
+            screenshotKeybindInput.style.background = '#2a2a2a';
+
+            // Send to main process
+            ipcRenderer.send('set-screenshot-keybind', accel);
+            updateKeybindStatus();
+        });
+
+        // Cancel capture on blur
+        screenshotKeybindInput.addEventListener('blur', () => {
+            if (isCapturingKeybind) {
+                isCapturingKeybind = false;
+                screenshotKeybindInput.value = screenshotKeybind ? acceleratorToDisplay(screenshotKeybind) : '';
+                screenshotKeybindInput.style.borderColor = '#8b6914';
+                screenshotKeybindInput.style.background = '#2a2a2a';
+            }
+        });
+
+        function clearKeybind() {
+            screenshotKeybind = '';
+            screenshotKeybindInput.value = '';
+            ipcRenderer.send('set-screenshot-keybind', '');
+            updateKeybindStatus();
+        }
+
+        // Load screenshot keybind on startup
+        ipcRenderer.invoke('get-screenshot-keybind').then((keybind) => {
+            screenshotKeybind = keybind || '';
+            screenshotKeybindInput.value = acceleratorToDisplay(screenshotKeybind);
+            updateKeybindStatus();
+        });
 
         // Request settings on load
         ipcRenderer.send('request-stopwatch-settings');

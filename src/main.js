@@ -1,8 +1,49 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, globalShortcut } = require('electron');
 const log = require('electron-log');
 const path = require('path');
 const fs = require('fs');
 const version = require('../package.json').version;
+
+// Clean zoom steps: 50% to 300% in 5% increments (stored as factors: 0.50, 0.55, ..., 3.00)
+const ZOOM_STEPS = [];
+for (let pct = 50; pct <= 300; pct += 5) {
+  ZOOM_STEPS.push(Math.round(pct) / 100);
+}
+
+// Given a current zoom factor and direction, return the next clean zoom step
+function getNextZoomStep(currentFactor, zoomIn) {
+  if (zoomIn) {
+    // Find the first step that is greater than the current factor
+    for (let i = 0; i < ZOOM_STEPS.length; i++) {
+      if (ZOOM_STEPS[i] > currentFactor + 0.001) {
+        return ZOOM_STEPS[i];
+      }
+    }
+    return ZOOM_STEPS[ZOOM_STEPS.length - 1]; // max
+  } else {
+    // Find the last step that is less than the current factor
+    for (let i = ZOOM_STEPS.length - 1; i >= 0; i--) {
+      if (ZOOM_STEPS[i] < currentFactor - 0.001) {
+        return ZOOM_STEPS[i];
+      }
+    }
+    return ZOOM_STEPS[0]; // min
+  }
+}
+
+// Snap a zoom factor to the nearest clean step
+function snapToZoomStep(factor) {
+  let closest = ZOOM_STEPS[0];
+  let minDiff = Math.abs(factor - closest);
+  for (let i = 1; i < ZOOM_STEPS.length; i++) {
+    const diff = Math.abs(factor - ZOOM_STEPS[i]);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = ZOOM_STEPS[i];
+    }
+  }
+  return closest;
+}
 
 // NAV_PANEL_WIDTH is used for nav panel sizing
 const NAV_PANEL_WIDTH = 250;
@@ -84,7 +125,8 @@ let appSettings = {
   lastWorld: { url: 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0', title: 'W2 HD' },
   soundManagerWindow: { width: 450, height: 500 },
   notesWindow: { width: 500, height: 600 },
-  screenshotFolder: '' // Path to custom screenshot folder
+  screenshotFolder: '', // Path to custom screenshot folder
+  screenshotKeybind: '' // Global keybind for screenshot (e.g. 'F12', 'PrintScreen', 'CommandOrControl+Shift+S')
 };
 
 function loadSettings() {
@@ -93,6 +135,19 @@ function loadSettings() {
       const data = fs.readFileSync(settingsPath, 'utf8');
       const loaded = JSON.parse(data);
       appSettings = { ...appSettings, ...loaded };
+      // Snap all saved zoom factors to clean steps
+      if (appSettings.zoomFactor) appSettings.zoomFactor = snapToZoomStep(appSettings.zoomFactor);
+      if (appSettings.chatZoom) appSettings.chatZoom = snapToZoomStep(appSettings.chatZoom);
+      if (appSettings.tabZoom) {
+        for (const url in appSettings.tabZoom) {
+          appSettings.tabZoom[url] = snapToZoomStep(appSettings.tabZoom[url]);
+        }
+      }
+      if (appSettings.externalZoom) {
+        for (const url in appSettings.externalZoom) {
+          appSettings.externalZoom[url] = snapToZoomStep(appSettings.externalZoom[url]);
+        }
+      }
       log.info('Settings loaded from', settingsPath);
     }
   } catch (e) {
@@ -329,6 +384,62 @@ app.whenReady().then(() => {
     if (mainPV && mainPV.view.webContents) {
       mainPV.view.webContents.send('request-screenshot');
     }
+  });
+
+  // Screenshot keybind management
+  let currentScreenshotAccelerator = null;
+
+  function registerScreenshotKeybind(accelerator) {
+    // Unregister previous keybind if any
+    unregisterScreenshotKeybind();
+
+    if (!accelerator || accelerator.trim() === '') return;
+
+    try {
+      const ret = globalShortcut.register(accelerator, () => {
+        log.info('Screenshot keybind triggered:', accelerator);
+        const mainPV = primaryViews.find(p => p.id === currentTab);
+        if (mainPV && mainPV.view.webContents) {
+          mainPV.view.webContents.send('request-screenshot');
+        }
+      });
+      if (ret) {
+        currentScreenshotAccelerator = accelerator;
+        log.info('Screenshot keybind registered:', accelerator);
+      } else {
+        log.warn('Failed to register screenshot keybind:', accelerator);
+      }
+    } catch (e) {
+      log.error('Error registering screenshot keybind:', e);
+    }
+  }
+
+  function unregisterScreenshotKeybind() {
+    if (currentScreenshotAccelerator) {
+      try {
+        globalShortcut.unregister(currentScreenshotAccelerator);
+      } catch (e) {
+        // ignore
+      }
+      currentScreenshotAccelerator = null;
+    }
+  }
+
+  // Register saved screenshot keybind on startup
+  if (appSettings.screenshotKeybind) {
+    registerScreenshotKeybind(appSettings.screenshotKeybind);
+  }
+
+  // IPC handler to update screenshot keybind
+  ipcMain.on('set-screenshot-keybind', (event, accelerator) => {
+    appSettings.screenshotKeybind = accelerator || '';
+    saveSettings();
+    registerScreenshotKeybind(accelerator);
+  });
+
+  // IPC handler to get current screenshot keybind
+  ipcMain.handle('get-screenshot-keybind', () => {
+    return appSettings.screenshotKeybind || '';
   });
 
   // Settings popup handler
@@ -1167,7 +1278,7 @@ app.whenReady().then(() => {
       const deltaY = data.deltaY;
       const zoomIn = deltaY < 0;
       const cur = targetWC.getZoomFactor();
-      const newFactor = Math.max(0.5, Math.min(3, zoomIn ? cur * 1.1 : cur / 1.1));
+      const newFactor = getNextZoomStep(cur, zoomIn);
       targetWC.setZoomFactor(newFactor);
       // Save zoom factor for main game view
       if (pv && pv.id === 'main') {
@@ -1188,7 +1299,7 @@ app.whenReady().then(() => {
         appSettings.chatZoom = newFactor;
         saveSettingsDebounced();
       }
-      log.info('Zoom applied:', newFactor);
+      log.info('Zoom applied:', Math.round(newFactor * 100) + '%');
     } catch (e) {
       log.error('zoom-wheel handler error:', e);
     }
@@ -1394,7 +1505,7 @@ app.whenReady().then(() => {
       if (channel === 'zoom-wheel' && data && typeof data.deltaY === 'number') {
         const zoomIn = data.deltaY < 0;
         const cur = win.webContents.getZoomFactor();
-        const newFactor = Math.max(0.5, Math.min(3, zoomIn ? cur * 1.1 : cur / 1.1));
+        const newFactor = getNextZoomStep(cur, zoomIn);
         win.webContents.setZoomFactor(newFactor);
         if (!appSettings.externalZoom) appSettings.externalZoom = {};
         appSettings.externalZoom[url] = newFactor;
@@ -1408,4 +1519,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('will-quit', () => {
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
 });
