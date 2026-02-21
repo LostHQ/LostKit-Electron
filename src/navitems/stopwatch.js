@@ -2,17 +2,22 @@ const { ipcRenderer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
+// ==================== STATE VARIABLES ====================
 let currentMode = 'afk'; // 'afk', 'countdown', or 'stopwatch'
 let countdownTime = 90;
 let soundAlert = false;
-let soundVolume = 60; // Increased default for background notifications
+let soundVolume = 60;
 let autoLoop = false;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
 let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
-let customSoundPath = ''; // NEW: Path to custom sound file
-let alertThreshold = 10; // NEW: Seconds before end to alert (default 10s)
+let customSoundPath = ''; // Path to custom sound file
+let alertThreshold = 10; // Seconds before end to alert (default 10s)
 let color = '#00ff00';
 let opacity = 100;
+
+// Dual mode support
+let dualModeEnabled = false;
+let secondaryMode = 'countdown';
 
 // Maximum countdown time in seconds (24 hours = 86400 seconds)
 const MAX_COUNTDOWN_SECONDS = 86400;
@@ -35,9 +40,6 @@ if (!fs.existsSync(soundsDir)) {
 // Initialize default packaged sound path
 function initDefaultSoundPath() {
     try {
-        // The default sound is in assets/sound/ relative to the app
-        // In development, __dirname points to navitems folder
-        // In production, we need to find the correct path
         const possiblePaths = [
             path.join(__dirname, '..', 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
             path.join(process.resourcesPath, 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
@@ -106,7 +108,7 @@ function formatTimeInput(totalSeconds) {
     return totalSeconds.toString();
 }
 
-// DOM Elements
+// ==================== DOM ELEMENTS ====================
 const modeDisplay = document.getElementById('mode-display');
 const afkBtn = document.getElementById('afk-btn');
 const countdownBtn = document.getElementById('countdown-btn');
@@ -130,102 +132,6 @@ const customSoundLabel = document.getElementById('custom-sound-label');
 // Mode-specific option panels
 const afkModeOptions = document.getElementById('afk-mode-options');
 
-// Update visibility of mode-specific options
-function updateModeOptionsVisibility() {
-    // Hide all mode-specific options first
-    if (afkModeOptions) afkModeOptions.style.display = 'none';
-    
-    // Show options based on current mode
-    if (currentMode === 'afk') {
-        if (afkModeOptions) afkModeOptions.style.display = 'block';
-    }
-    
-    // Countdown settings are shown in setMode function already
-}
-
-// Sound management functions
-function openSoundManager() {
-    ipcRenderer.invoke('open-sound-manager').then((success) => {
-        if (success) {
-            console.log('Sound manager window opened');
-        }
-    }).catch(err => console.log('Error opening sound manager:', err));
-}
-
-function toggleSoundManager() {
-    const managerRow = document.getElementById('sound-manager-row');
-    if (managerRow.style.display === 'none') {
-        managerRow.style.display = '';
-        refreshSoundList();
-    } else {
-        managerRow.style.display = 'none';
-    }
-}
-
-function refreshSoundList() {
-    ipcRenderer.invoke('list-sound-files', soundsDir).then((files) => {
-        const soundList = document.getElementById('sound-list');
-        soundList.innerHTML = '';
-        
-        // Add "Default (No Sound)" option
-        const defaultBtn = document.createElement('div');
-        defaultBtn.style.cssText = 'padding: 6px; background: ' + (customSoundPath === '' ? '#3a5a3a' : '#2a2a2a') + '; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;';
-        defaultBtn.innerHTML = '<span style="flex: 1;">Default (No Sound)</span>';
-        defaultBtn.onclick = () => {
-            customSoundPath = '';
-            customSoundLabel.textContent = 'No custom sound';
-            saveConfig();
-            refreshSoundList();
-        };
-        soundList.appendChild(defaultBtn);
-        
-        // Add available sound files
-        files.forEach(file => {
-            const fullPath = path.join(soundsDir, file);
-            const isActive = customSoundPath === fullPath;
-            
-            const btn = document.createElement('div');
-            btn.style.cssText = 'padding: 6px; background: ' + (isActive ? '#3a5a3a' : '#2a2a2a') + '; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;';
-            
-            const deleteBtn = document.createElement('button');
-            deleteBtn.textContent = 'Delete';
-            deleteBtn.style.cssText = 'padding: 2px 6px; background: #8b2222; border: 1px solid #c00; border-radius: 2px; color: #fff; cursor: pointer; font-size: 9px;';
-            deleteBtn.onclick = (e) => {
-                e.stopPropagation();
-                deleteSoundFile(file);
-            };
-            
-            btn.appendChild(document.createTextNode(file));
-            btn.appendChild(deleteBtn);
-            
-            btn.onclick = () => {
-                customSoundPath = fullPath;
-                customSoundLabel.textContent = 'Custom Sound: ' + file;
-                saveConfig();
-                refreshSoundList();
-            };
-            soundList.appendChild(btn);
-        });
-    }).catch(err => console.log('Error refreshing sound list:', err));
-}
-
-function deleteSoundFile(fileName) {
-    if (confirm(`Delete "${fileName}"?`)) {
-        const filePath = path.join(soundsDir, fileName);
-        ipcRenderer.invoke('delete-sound-file', filePath).then((success) => {
-            if (success) {
-                console.log('Sound file deleted:', filePath);
-                if (customSoundPath === filePath) {
-                    customSoundPath = '';
-                    customSoundLabel.textContent = 'No custom sound';
-                    saveConfig();
-                }
-                refreshSoundList();
-            }
-        }).catch(err => console.log('Error deleting sound file:', err));
-    }
-}
-
 // Stopwatch display elements
 const timerDisplay = document.getElementById('stopwatch-timer-display');
 const startBtn = document.getElementById('stopwatch-start-btn');
@@ -240,6 +146,8 @@ let interval = null;
 let running = false;
 let soundPlayed = false;
 
+// ==================== CONFIG FUNCTIONS ====================
+
 // Save settings to config file
 function saveConfig() {
     const config = {
@@ -253,7 +161,9 @@ function saveConfig() {
         customSoundFilename: customSoundPath ? path.basename(customSoundPath) : '',
         alertThreshold,
         color,
-        opacity
+        opacity,
+        dualModeEnabled,
+        secondaryMode
     };
     try {
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -290,9 +200,12 @@ function loadConfig() {
             alertThreshold = config.alertThreshold ?? alertThreshold;
             color = config.color ?? color;
             opacity = config.opacity ?? opacity;
+            dualModeEnabled = config.dualModeEnabled ?? dualModeEnabled;
+            secondaryMode = config.secondaryMode ?? secondaryMode;
+            
             console.log('Stopwatch config loaded:', {soundAlert, soundVolume, customSoundPath});
 
-            // Send settings to main process so background AFK alert can use them
+            // Send settings to main process so background timer can use them
             ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
             ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
             ipcRenderer.send('update-stopwatch-setting', 'customSoundPath', customSoundPath);
@@ -304,6 +217,8 @@ function loadConfig() {
         console.log('Error loading config:', e);
     }
 }
+
+// ==================== AUDIO FUNCTIONS ====================
 
 function initAudio() {
     try {
@@ -414,6 +329,8 @@ function playDefaultPackagedSound() {
     playDefaultBeep();
 }
 
+// ==================== DISPLAY FUNCTIONS ====================
+
 function formatTime(totalSeconds) {
     const mins = Math.floor(Math.abs(totalSeconds) / 60);
     const secs = Math.abs(totalSeconds) % 60;
@@ -422,26 +339,50 @@ function formatTime(totalSeconds) {
 }
 
 function updateDisplay() {
-    if (currentMode === 'afk' || currentMode === 'countdown') {
-        const remaining = (currentMode === 'afk' ? 90 : countdownTime) - seconds;
+    // Note: Sound alerts are handled by the main process (background timer)
+    // This function only updates the visual display
+    if (currentMode === 'afk') {
+        // AFK mode: show remaining time, or negative if past 90 seconds
+        const remaining = 90 - seconds;
         
         if (remaining <= 0) {
-            timerDisplay.textContent = '00:00';
-            timerDisplay.classList.remove('flash-red');
+            // Show negative time (how long since timer expired)
+            timerDisplay.textContent = formatTime(remaining);
+            timerDisplay.classList.add('flash-red');
             timerDisplay.style.color = '#ff0000';
+        } else {
+            timerDisplay.textContent = formatTime(remaining);
             
-            if (autoLoop && running) {
+            if (remaining <= alertThreshold) {
+                timerDisplay.classList.add('flash-red');
+            } else {
+                timerDisplay.classList.remove('flash-red');
+                timerDisplay.style.color = color;
+            }
+        }
+    } else if (currentMode === 'countdown') {
+        const remaining = countdownTime - seconds;
+        
+        if (remaining <= 0) {
+            if (autoLoop) {
+                // For auto-loop, reset and continue
                 seconds = 0;
                 soundPlayed = false;
                 timerDisplay.classList.remove('flash-red');
-                updateDisplay();
+                timerDisplay.textContent = formatTime(countdownTime);
                 return;
             }
+            
+            timerDisplay.textContent = '00:00';
+            timerDisplay.classList.remove('flash-red');
+            timerDisplay.style.color = '#ff0000';
             
             if (running) {
                 clearInterval(interval);
                 running = false;
                 startBtn.textContent = 'Start';
+                // Also stop the background timer
+                ipcRenderer.send('stop-background-timer');
             }
             
             soundPlayed = false;
@@ -450,11 +391,6 @@ function updateDisplay() {
             
             if (remaining <= alertThreshold) {
                 timerDisplay.classList.add('flash-red');
-                
-                if (soundAlert && !soundPlayed) {
-                    playBeep();
-                    soundPlayed = true;
-                }
             } else {
                 timerDisplay.classList.remove('flash-red');
                 timerDisplay.style.color = color;
@@ -468,14 +404,37 @@ function updateDisplay() {
     }
 }
 
+// Update visibility of mode-specific options
+function updateModeOptionsVisibility() {
+    // Hide all mode-specific options first
+    if (afkModeOptions) afkModeOptions.style.display = 'none';
+    
+    // Show options based on current mode
+    if (currentMode === 'afk') {
+        if (afkModeOptions) afkModeOptions.style.display = 'block';
+    }
+    
+    // Countdown settings are shown in setMode function already
+}
+
 function tick() {
-    if (currentMode === 'afk' || currentMode === 'countdown') {
-        const maxTime = currentMode === 'afk' ? 90 : countdownTime;
-        if (seconds >= maxTime) return;
+    // For AFK mode, keep counting past 90 (for negative display)
+    // For countdown mode, stop at max time (unless auto-loop)
+    if (currentMode === 'countdown') {
+        if (seconds >= countdownTime) {
+            if (autoLoop) {
+                seconds = 0;
+                soundPlayed = false;
+            } else {
+                return;
+            }
+        }
     }
     seconds++;
     updateDisplay();
 }
+
+// ==================== BUTTON HANDLERS ====================
 
 startBtn.addEventListener('click', () => {
     if (running) {
@@ -483,12 +442,17 @@ startBtn.addEventListener('click', () => {
         startBtn.textContent = 'Start';
         running = false;
         
-        // Also pause the background timer if Game Click is enabled
+        // Also pause the background timer
+        ipcRenderer.send('pause-background-timer');
+        
+        // Also pause the game-click timer if Game Click is enabled (legacy AFK)
         if (afkGameClick && currentMode === 'afk') {
             ipcRenderer.send('pause-game-click-timer');
         }
     } else {
-        if ((currentMode === 'afk' || currentMode === 'countdown') && seconds >= (currentMode === 'afk' ? 90 : countdownTime)) {
+        // For countdown mode, reset if already finished
+        // For AFK mode, allow continuing even past 90 (negative display)
+        if (currentMode === 'countdown' && seconds >= countdownTime) {
             seconds = 0;
             soundPlayed = false;
         }
@@ -497,9 +461,18 @@ startBtn.addEventListener('click', () => {
         startBtn.textContent = 'Pause';
         running = true;
         
-        // Also resume the background timer if Game Click is enabled
+        // Start/resume the background timer for all modes
+        // If legacy Game-Click AFK mode is enabled and we're in AFK mode,
+        // prefer the game-click timer (legacy) and do NOT start the unified background timer
         if (afkGameClick && currentMode === 'afk') {
             ipcRenderer.send('resume-game-click-timer');
+        } else {
+            ipcRenderer.send('start-background-timer', {
+                mode: currentMode,
+                initialSeconds: seconds,
+                countdownTime: countdownTime,
+                autoLoop: autoLoop
+            });
         }
     }
 });
@@ -509,9 +482,11 @@ resetBtn.addEventListener('click', () => {
     soundPlayed = false;
     timerDisplay.classList.remove('flash-red');
     
-    // If game-click mode is active, also reset the background timer
+    // Reset the appropriate timer depending on mode/config
     if (afkGameClick && currentMode === 'afk') {
         ipcRenderer.send('reset-game-click-timer');
+    } else {
+        ipcRenderer.send('reset-background-timer');
     }
     
     if (running) {
@@ -525,8 +500,9 @@ resetBtn.addEventListener('click', () => {
     updateDisplay();
 });
 
-// Mode switching
-function setMode(mode) {
+// ==================== MODE SWITCHING ====================
+
+function setMode(mode, preserveState = false) {
     currentMode = mode;
     saveConfig();
     
@@ -535,11 +511,16 @@ function setMode(mode) {
     countdownBtn.classList.remove('active');
     stopwatchBtn.classList.remove('active');
     
-    // Stop timer when changing modes
-    if (running) {
+    // Stop timer when changing modes (unless preserving state)
+    if (running && !preserveState) {
         clearInterval(interval);
         running = false;
         startBtn.textContent = 'Start';
+    }
+    
+    // Stop background timer when switching modes (unless preserving state)
+    if (!preserveState) {
+        ipcRenderer.send('stop-background-timer');
     }
     
     // Stop background timer when switching away from AFK mode
@@ -552,27 +533,35 @@ function setMode(mode) {
         ipcRenderer.send('resume-game-click-timer');
     }
     
-    seconds = 0;
-    soundPlayed = false;
+    if (!preserveState) {
+        seconds = 0;
+        soundPlayed = false;
+    }
     
     if (mode === 'afk') {
         afkBtn.classList.add('active');
         modeDisplay.textContent = 'Mode: AFK Timer (90s)';
         countdownSettings.style.display = 'none';
-        timerDisplay.textContent = '01:30';
-        timerDisplay.style.color = color;
+        if (!preserveState) {
+            timerDisplay.textContent = '01:30';
+            timerDisplay.style.color = color;
+        }
     } else if (mode === 'countdown') {
         countdownBtn.classList.add('active');
         modeDisplay.textContent = `Mode: Countdown (${countdownTime}s)`;
         countdownSettings.style.display = 'block';
-        timerDisplay.textContent = formatTime(countdownTime);
-        timerDisplay.style.color = color;
+        if (!preserveState) {
+            timerDisplay.textContent = formatTime(countdownTime);
+            timerDisplay.style.color = color;
+        }
     } else {
         stopwatchBtn.classList.add('active');
         modeDisplay.textContent = 'Mode: Timer (Count Up)';
         countdownSettings.style.display = 'none';
-        timerDisplay.textContent = '00:00';
-        timerDisplay.style.color = color;
+        if (!preserveState) {
+            timerDisplay.textContent = '00:00';
+            timerDisplay.style.color = color;
+        }
     }
     
     // Show/hide mode-specific options
@@ -582,6 +571,8 @@ function setMode(mode) {
 afkBtn.addEventListener('click', () => setMode('afk'));
 countdownBtn.addEventListener('click', () => setMode('countdown'));
 stopwatchBtn.addEventListener('click', () => setMode('stopwatch'));
+
+// ==================== INPUT HANDLERS ====================
 
 // Countdown time input - update instantly as user types
 countdownTimeInput.addEventListener('input', () => {
@@ -623,6 +614,9 @@ countdownTimeInput.addEventListener('blur', () => {
     countdownTimeInput.value = formatTimeInput(countdownTime);
     saveConfig();
     
+    // Update background timer settings
+    ipcRenderer.send('update-background-timer-settings', { countdownTime: countdownTime });
+    
     if (currentMode === 'countdown') {
         modeDisplay.textContent = `Mode: Countdown (${countdownTime}s)`;
         if (!running) {
@@ -657,6 +651,8 @@ alertThresholdInput.addEventListener('change', (e) => {
     alertThresholdInput.value = value;
     saveConfig();
     ipcRenderer.send('update-stopwatch-setting', 'alertThreshold', alertThreshold);
+    // Update background timer settings
+    ipcRenderer.send('update-background-timer-settings', { alertThreshold: alertThreshold });
 });
 
 // Volume slider
@@ -671,6 +667,8 @@ volumeSlider.addEventListener('input', (e) => {
 autoLoopCheckbox.addEventListener('change', () => {
     autoLoop = autoLoopCheckbox.checked;
     saveConfig();
+    // Update background timer settings
+    ipcRenderer.send('update-background-timer-settings', { autoLoop: autoLoop });
 });
 
 // AFK Game Click checkbox
@@ -687,12 +685,6 @@ afkInputTypeSelect.addEventListener('change', () => {
     saveConfig();
     console.log('nav panel: afkInputType changed ->', afkInputType);
     ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
-});
-
-// Volume slider
-volumeSlider.addEventListener('input', (e) => {
-    soundVolume = parseInt(e.target.value);
-    volumeValue.textContent = `${soundVolume}%`;
 });
 
 // Play test beep and send volume setting when user releases the volume slider
@@ -787,10 +779,99 @@ customSoundInput.addEventListener('change', (e) => {
     }
 });
 
+// ==================== SOUND MANAGEMENT ====================
+
+function openSoundManager() {
+    ipcRenderer.invoke('open-sound-manager').then((success) => {
+        if (success) {
+            console.log('Sound manager window opened');
+        }
+    }).catch(err => console.log('Error opening sound manager:', err));
+}
+
+function toggleSoundManager() {
+    const managerRow = document.getElementById('sound-manager-row');
+    if (managerRow.style.display === 'none') {
+        managerRow.style.display = '';
+        refreshSoundList();
+    } else {
+        managerRow.style.display = 'none';
+    }
+}
+
+function refreshSoundList() {
+    ipcRenderer.invoke('list-sound-files', soundsDir).then((files) => {
+        const soundList = document.getElementById('sound-list');
+        soundList.innerHTML = '';
+        
+        // Add "Default (No Sound)" option
+        const defaultBtn = document.createElement('div');
+        defaultBtn.style.cssText = 'padding: 6px; background: ' + (customSoundPath === '' ? '#3a5a3a' : '#2a2a2a') + '; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;';
+        defaultBtn.innerHTML = '<span style="flex: 1;">Default (No Sound)</span>';
+        defaultBtn.onclick = () => {
+            customSoundPath = '';
+            customSoundLabel.textContent = 'No custom sound';
+            saveConfig();
+            refreshSoundList();
+        };
+        soundList.appendChild(defaultBtn);
+        
+        // Add available sound files
+        files.forEach(file => {
+            const fullPath = path.join(soundsDir, file);
+            const isActive = customSoundPath === fullPath;
+            
+            const btn = document.createElement('div');
+            btn.style.cssText = 'padding: 6px; background: ' + (isActive ? '#3a5a3a' : '#2a2a2a') + '; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;';
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.style.cssText = 'padding: 2px 6px; background: #8b2222; border: 1px solid #c00; border-radius: 2px; color: #fff; cursor: pointer; font-size: 9px;';
+            deleteBtn.onclick = (e) => {
+                e.stopPropagation();
+                deleteSoundFile(file);
+            };
+            
+            btn.appendChild(document.createTextNode(file));
+            btn.appendChild(deleteBtn);
+            
+            btn.onclick = () => {
+                customSoundPath = fullPath;
+                customSoundLabel.textContent = 'Custom Sound: ' + file;
+                saveConfig();
+                refreshSoundList();
+            };
+            soundList.appendChild(btn);
+        });
+    }).catch(err => console.log('Error refreshing sound list:', err));
+}
+
+function deleteSoundFile(fileName) {
+    if (confirm(`Delete "${fileName}"?`)) {
+        const filePath = path.join(soundsDir, fileName);
+        ipcRenderer.invoke('delete-sound-file', filePath).then((success) => {
+            if (success) {
+                console.log('Sound file deleted:', filePath);
+                if (customSoundPath === filePath) {
+                    customSoundPath = '';
+                    customSoundLabel.textContent = 'No custom sound';
+                    saveConfig();
+                }
+                refreshSoundList();
+            }
+        }).catch(err => console.log('Error deleting sound file:', err));
+    }
+}
+
+// ==================== INITIALIZATION ====================
+
 // Initialize by loading config
 initDefaultSoundPath();
 loadConfig();
-setMode('afk');
+
+// Set mode from saved config (preserve state to not stop background timer)
+setMode(currentMode, true);
+
 colorPicker.value = color;
 opacitySlider.value = opacity;
 opacityValue.textContent = `${opacity}%`;
@@ -820,15 +901,58 @@ refreshSoundList();
 timerDisplay.style.opacity = opacity / 100;
 
 // Request current background timer state and sync display
-ipcRenderer.invoke('get-game-click-timer-state').then((state) => {
-    if (state && state.running && state.afkGameClick && currentMode === 'afk') {
+ipcRenderer.invoke('get-background-timer-state').then((state) => {
+    console.log('Background timer state on load:', state);
+    if (state && state.running) {
+        // Sync regardless of mode - update our mode to match background timer
+        currentMode = state.mode;
         seconds = state.seconds;
         running = true;
         startBtn.textContent = 'Pause';
+        
+        // Update mode buttons to reflect current mode
+        afkBtn.classList.remove('active');
+        countdownBtn.classList.remove('active');
+        stopwatchBtn.classList.remove('active');
+        if (state.mode === 'afk') afkBtn.classList.add('active');
+        else if (state.mode === 'countdown') countdownBtn.classList.add('active');
+        else stopwatchBtn.classList.add('active');
+        
+        // Update mode display
+        if (state.mode === 'afk') {
+            modeDisplay.textContent = 'Mode: AFK Timer (90s)';
+            countdownSettings.style.display = 'none';
+        } else if (state.mode === 'countdown') {
+            modeDisplay.textContent = `Mode: Countdown (${state.countdownTime || countdownTime}s)`;
+            countdownSettings.style.display = 'block';
+            if (state.countdownTime) countdownTime = state.countdownTime;
+        } else {
+            modeDisplay.textContent = 'Mode: Timer (Count Up)';
+            countdownSettings.style.display = 'none';
+        }
+        
+        // Start local interval to keep display updated
+        interval = setInterval(tick, 1000);
+        
         updateDisplay();
-        console.log('Synced with background timer:', state.seconds, 'seconds');
+        console.log('Synced with background timer:', state);
     }
-}).catch(err => console.log('Could not get timer state:', err));
+    // Always check legacy game-click timer for AFK mode
+    ipcRenderer.invoke('get-game-click-timer-state').then((legacyState) => {
+        if (legacyState && legacyState.running && legacyState.afkGameClick && currentMode === 'afk') {
+            seconds = legacyState.seconds;
+            running = true;
+            startBtn.textContent = 'Pause';
+            
+            // Start local interval to keep display updated
+            if (!interval) {
+                interval = setInterval(tick, 1000);
+            }
+            updateDisplay();
+            console.log('Synced with legacy game-click timer:', legacyState.seconds, 'seconds');
+        }
+    }).catch(err => console.log('Could not get legacy timer state:', err));
+}).catch(err => console.log('Could not get background timer state:', err));
 
 // Inform main process of current settings on load so background timer works
 ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
@@ -838,6 +962,8 @@ ipcRenderer.send('update-stopwatch-setting', 'soundAlert', soundAlert);
 ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
 ipcRenderer.send('update-stopwatch-setting', 'customSoundPath', customSoundPath);
 console.log('nav panel: initial settings sent to main process');
+
+// ==================== IPC LISTENERS ====================
 
 // Listen for game click reset signal from main process
 ipcRenderer.on('afk-game-click-reset', () => {
@@ -850,13 +976,35 @@ ipcRenderer.on('afk-game-click-reset', () => {
         soundPlayed = false;
         timerDisplay.classList.remove('flash-red');
         
-        // Start the timer if not already running
-        if (!running) {
-            interval = setInterval(tick, 1000);
-            running = true;
-            startBtn.textContent = 'Pause';
+        // If using legacy Game-Click AFK handling, reset that timer instead
+        if (afkGameClick) {
+            ipcRenderer.send('reset-game-click-timer');
+
+            // Ensure local display is running
+            if (!running) {
+                interval = setInterval(tick, 1000);
+                running = true;
+                startBtn.textContent = 'Pause';
+                ipcRenderer.send('resume-game-click-timer');
+            }
+        } else {
+            // Fallback to unified background timer reset
+            ipcRenderer.send('reset-background-timer');
+
+            // Start the timer locally if not running
+            if (!running) {
+                interval = setInterval(tick, 1000);
+                running = true;
+                startBtn.textContent = 'Pause';
+                ipcRenderer.send('start-background-timer', {
+                    mode: 'afk',
+                    initialSeconds: 0,
+                    countdownTime: 90,
+                    autoLoop: false
+                });
+            }
         }
-        
+
         updateDisplay();
         console.log('AFK timer reset due to game click');
     }
@@ -883,6 +1031,18 @@ ipcRenderer.on('game-click-timer-tick', (event, bgSeconds) => {
     // Sync the stopwatch display with the background timer when in AFK mode
     if (currentMode === 'afk' && afkGameClick) {
         seconds = bgSeconds;
+        updateDisplay();
+    }
+});
+
+// Listen for unified background timer ticks to sync display
+ipcRenderer.on('background-timer-tick', (event, data) => {
+    // Sync the stopwatch display with the background timer
+    if (currentMode === data.mode) {
+        seconds = data.seconds;
+        if (data.countdownTime && currentMode === 'countdown') {
+            countdownTime = data.countdownTime;
+        }
         updateDisplay();
     }
 });

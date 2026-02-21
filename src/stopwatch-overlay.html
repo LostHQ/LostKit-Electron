@@ -243,14 +243,21 @@
 
     function updateDisplay() {
       if (mode === 'afk' || mode === 'countdown') {
-        const remaining = (mode === 'afk' ? 90 : customTime) - seconds;
-        
-        if (remaining <= 0) {
-          // Timer finished
+        const maxTime = mode === 'afk' ? targetTime : customTime;
+        const remaining = maxTime - seconds;
+
+        if (remaining < 0 && mode === 'afk') {
+          // In AFK mode allow negative time (time since exceeding target)
+          timerEl.textContent = formatTime(remaining);
+          timerEl.classList.add('flash-red');
+          timerEl.style.color = '#ff0000';
+          // Keep running until user interacts; sound logic handled when crossing thresholds
+        } else if (remaining <= 0) {
+          // Timer finished (countdown mode or exact zero)
           timerEl.textContent = '00:00';
           timerEl.classList.remove('flash-red');
           timerEl.style.color = '#ff0000';
-          
+
           // If auto-loop is enabled, restart the timer
           if (autoLoop && running) {
             seconds = 0;
@@ -259,23 +266,23 @@
             updateDisplay();
             return;
           }
-          
-          // Stop the timer
-          if (running) {
+
+          // Stop the timer for countdown mode
+          if (mode === 'countdown' && running) {
             clearInterval(interval);
             running = false;
             startBtn.textContent = 'Start';
           }
-          
+
           // Reset sound flag
           soundPlayed = false;
         } else {
           timerEl.textContent = formatTime(remaining);
-          
+
           // Flash red and play sound at 10 seconds and below
           if (remaining <= 10) {
             timerEl.classList.add('flash-red');
-            
+
             // Play sound once if enabled
             if (soundAlertEnabled && !soundPlayed) {
               playBeep();
@@ -296,14 +303,12 @@
     }
 
     function tick() {
-      if (mode === 'afk' || mode === 'countdown') {
-        const maxTime = mode === 'afk' ? 90 : customTime;
-        if (seconds >= maxTime) {
-          // Already at or past the target time
-          return;
-        }
+      // For countdown mode stop at the target; AFK mode continues into negative values
+      if (mode === 'countdown') {
+        if (seconds >= customTime) return;
       }
-      // In stopwatch mode, just keep counting up infinitely
+
+      // In stopwatch and afk modes, keep counting up
       seconds++;
       updateDisplay();
     }

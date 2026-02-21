@@ -186,6 +186,54 @@ let gameClickTimerInterval = null;
 let gameClickTimerSeconds = 0;
 let gameClickAlertTriggeredInCycle = false;
 let alertThreshold = 10; // Seconds before 90 to alert
+
+// Background timer for all stopwatch modes (countdown, timer, afk)
+let backgroundTimerInterval = null;
+let backgroundTimerSeconds = 0;
+let backgroundTimerMode = 'afk'; // 'afk', 'countdown', or 'stopwatch'
+let backgroundTimerRunning = false;
+let backgroundCountdownTime = 90; // For countdown mode
+let backgroundAlertTriggered = false;
+let backgroundAutoLoop = false;
+let backgroundTimerStartTime = null; // Timestamp when timer started for accurate timing
+
+// Window title timer display
+const baseWindowTitle = `LostKit 2 v${version} - by LostHQ Team`;
+
+function formatWindowTitleTime(totalSeconds) {
+  const mins = Math.floor(Math.abs(totalSeconds) / 60);
+  const secs = Math.abs(totalSeconds) % 60;
+  const sign = totalSeconds < 0 ? '-' : '';
+  return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function updateWindowTitleWithTimer(running, seconds, mode, countdownTime) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  
+  if (!running) {
+    mainWindow.setTitle(baseWindowTitle);
+    return;
+  }
+  
+  let modeLabel;
+  let displayValue;
+  
+  if (mode === 'afk') {
+    modeLabel = 'AFK';
+    const remaining = 90 - seconds;
+    displayValue = formatWindowTitleTime(remaining);
+  } else if (mode === 'countdown') {
+    modeLabel = 'CNT';
+    const remaining = countdownTime - seconds;
+    displayValue = formatWindowTitleTime(remaining);
+  } else if (mode === 'stopwatch') {
+    modeLabel = 'TMR';
+    displayValue = formatWindowTitleTime(seconds);
+  }
+  
+  mainWindow.setTitle(`${baseWindowTitle}  |  ${modeLabel}: ${displayValue}`);
+}
+
 let primaryViews = [];
 let navView;
 let chatView;
@@ -745,6 +793,8 @@ app.whenReady().then(() => {
     gameClickTimerInterval = setInterval(() => {
       tickGameClickTimer();
     }, 1000);
+    // Ensure titlebar shows the AFK timer when game-click timer starts
+    updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
   }
 
   function tickGameClickTimer() {
@@ -755,21 +805,23 @@ app.whenReady().then(() => {
       navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
     }
 
-    // Trigger once per 90-second cycle when threshold is reached/passed
+    // Update window title to reflect game-click AFK timer
+    updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
+
+    // Trigger once when threshold is reached (before 90)
     const safeThreshold = Math.max(1, Math.min(89, parseInt(alertThreshold, 10) || 10));
     const thresholdTime = 90 - safeThreshold;
-    if (!gameClickAlertTriggeredInCycle && gameClickTimerSeconds >= thresholdTime) {
+    if (!gameClickAlertTriggeredInCycle && gameClickTimerSeconds >= thresholdTime && gameClickTimerSeconds < 90) {
       gameClickAlertTriggeredInCycle = true;
       console.log('Game-click timer reached threshold, alerting');
       triggerGameClickAlert();
     }
 
-    // At 90 seconds, reset and loop
-    if (gameClickTimerSeconds >= 90) {
-      console.log('Game-click timer reached 90s, looping');
-      gameClickTimerSeconds = 0;
-      gameClickAlertTriggeredInCycle = false;
+    // At 90 seconds, continue counting (for negative display) - no additional alert
+    if (gameClickTimerSeconds === 90) {
+      console.log('Game-click timer reached 90s, continuing to count for negative display');
     }
+    // Note: Timer continues past 90 to show negative time (how long since expired)
   }
 
   function resetGameClickTimer() {
@@ -780,9 +832,12 @@ app.whenReady().then(() => {
       if (navView && navView.webContents) {
         navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
       }
+      // Keep titlebar showing after reset
+      updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     } else if (afkGameClick) {
       // Start the timer if feature is enabled
       startGameClickTimer();
+      updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     }
   }
 
@@ -795,6 +850,8 @@ app.whenReady().then(() => {
     gameClickTimerSeconds = 0;
     gameClickAlertTriggeredInCycle = false;
     console.log('Stopped game-click timer');
+    // Reset window title when stopping the legacy game-click timer
+    updateWindowTitleWithTimer(false, 0, 'afk', 90);
   }
 
   function triggerGameClickAlert() {
@@ -831,17 +888,19 @@ app.whenReady().then(() => {
     playDefaultBeep();
   }
 
-  function playCustomAlertSound(filePath) {
+  function playCustomAlertSound(filePath, volume = null) {
     try {
       if (!fs.existsSync(filePath)) {
         console.log('Custom sound file not found:', filePath);
         return;
       }
 
+      const useVolume = volume !== null ? volume : soundVolume;
+
       if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
         mainWindow.webContents.send('play-alert-sound', {
           customSoundPath: filePath,
-          soundVolume
+          soundVolume: useVolume
         });
       } else {
         console.log('Main window unavailable for custom sound playback');
@@ -969,6 +1028,221 @@ app.whenReady().then(() => {
     }
   }
 
+  // ==================== UNIFIED BACKGROUND TIMER FOR ALL MODES ====================
+  
+  function startBackgroundTimer(mode, initialSeconds = 0, countdownTime = 90, autoLoop = false) {
+    // Stop any existing timer
+    stopBackgroundTimer();
+    
+    backgroundTimerMode = mode;
+    backgroundTimerSeconds = initialSeconds;
+    backgroundCountdownTime = countdownTime;
+    backgroundAutoLoop = autoLoop;
+    backgroundTimerRunning = true;
+    backgroundAlertTriggered = false;
+    // Account for initial seconds when setting start time
+    backgroundTimerStartTime = Date.now() - (initialSeconds * 1000);
+    
+    console.log('Starting background timer:', { mode, initialSeconds, countdownTime, autoLoop });
+    
+    // Update window title with timer
+    updateWindowTitleWithTimer(backgroundTimerRunning, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
+    
+    // Use timestamp-based timing for accuracy
+    backgroundTimerInterval = setInterval(() => {
+      tickBackgroundTimer();
+    }, 1000);
+  }
+  
+  function tickBackgroundTimer() {
+    // Calculate actual elapsed time based on timestamp for accuracy
+    const elapsed = Math.floor((Date.now() - backgroundTimerStartTime) / 1000);
+    
+    // Only update if a full second has passed
+    if (elapsed <= backgroundTimerSeconds) {
+      return;
+    }
+    
+    backgroundTimerSeconds = elapsed;
+    
+    // Send tick to stopwatch panel if visible
+    if (navView && navView.webContents) {
+      navView.webContents.send('background-timer-tick', {
+        seconds: backgroundTimerSeconds,
+        mode: backgroundTimerMode,
+        countdownTime: backgroundCountdownTime
+      });
+    }
+    
+    // Update window title with timer (visual only, no alerts triggered here)
+    updateWindowTitleWithTimer(backgroundTimerRunning, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
+    
+    if (backgroundTimerMode === 'afk') {
+      // AFK mode: alert at threshold, continue counting past 90 (negative display)
+      const maxTime = 90;
+      const thresholdTime = maxTime - alertThreshold;
+      
+      // Trigger alert once when threshold is reached
+      if (!backgroundAlertTriggered && backgroundTimerSeconds >= thresholdTime) {
+        backgroundAlertTriggered = true;
+        console.log('AFK background timer reached threshold, alerting');
+        triggerBackgroundAlert();
+      }
+      // Note: AFK mode continues counting past 90 for negative display
+      // No auto-loop for AFK - it just keeps counting
+      
+    } else if (backgroundTimerMode === 'countdown') {
+      // Countdown mode: alert at threshold, optionally loop
+      const remaining = backgroundCountdownTime - backgroundTimerSeconds;
+      const thresholdTime = backgroundCountdownTime - alertThreshold;
+      
+      // Trigger alert once when threshold is reached
+      if (!backgroundAlertTriggered && backgroundTimerSeconds >= thresholdTime && remaining > 0) {
+        backgroundAlertTriggered = true;
+        console.log('Countdown background timer reached threshold, alerting');
+        triggerBackgroundAlert();
+      }
+      
+      // Handle end of countdown
+      if (backgroundTimerSeconds >= backgroundCountdownTime) {
+        if (backgroundAutoLoop) {
+          // Loop: reset and continue
+          backgroundTimerSeconds = 0;
+          backgroundTimerStartTime = Date.now();
+          backgroundAlertTriggered = false;
+          console.log('Countdown background timer looping');
+        } else {
+          // Stop at end
+          console.log('Countdown background timer finished');
+        }
+      }
+      
+    } else if (backgroundTimerMode === 'stopwatch') {
+      // Stopwatch mode: just keeps counting, no alerts needed
+      // Could add optional alerts at intervals if needed in future
+    }
+  }
+  
+  function stopBackgroundTimer() {
+    if (backgroundTimerInterval) {
+      clearInterval(backgroundTimerInterval);
+      backgroundTimerInterval = null;
+    }
+    backgroundTimerRunning = false;
+    backgroundTimerStartTime = null;
+    console.log('Background timer stopped');
+    
+    // Reset window title
+    updateWindowTitleWithTimer(false, 0, backgroundTimerMode, backgroundCountdownTime);
+  }
+  
+  function pauseBackgroundTimer() {
+    if (backgroundTimerInterval) {
+      clearInterval(backgroundTimerInterval);
+      backgroundTimerInterval = null;
+    }
+    console.log('Background timer paused at', backgroundTimerSeconds, 'seconds');
+    
+    // Reset window title when paused
+    updateWindowTitleWithTimer(false, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
+  }
+  
+  function resumeBackgroundTimer() {
+    if (!backgroundTimerRunning) return;
+    if (backgroundTimerInterval) return; // Already running
+    
+    // Recalculate start time based on current seconds
+    backgroundTimerStartTime = Date.now() - (backgroundTimerSeconds * 1000);
+    
+    backgroundTimerInterval = setInterval(() => {
+      tickBackgroundTimer();
+    }, 1000);
+    console.log('Background timer resumed from', backgroundTimerSeconds, 'seconds');
+    
+    // Update window title with timer
+    updateWindowTitleWithTimer(true, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
+  }
+  
+  function resetBackgroundTimer() {
+    backgroundTimerSeconds = 0;
+    backgroundTimerStartTime = Date.now();
+    backgroundAlertTriggered = false;
+    console.log('Background timer reset to 0');
+    
+    // Notify stopwatch panel
+    if (navView && navView.webContents) {
+      navView.webContents.send('background-timer-tick', {
+        seconds: 0,
+        mode: backgroundTimerMode,
+        countdownTime: backgroundCountdownTime
+      });
+    }
+    
+    // Update window title with timer
+    updateWindowTitleWithTimer(backgroundTimerRunning, 0, backgroundTimerMode, backgroundCountdownTime);
+  }
+  
+  function getBackgroundTimerState() {
+    return {
+      running: backgroundTimerRunning,
+      seconds: backgroundTimerSeconds,
+      mode: backgroundTimerMode,
+      countdownTime: backgroundCountdownTime,
+      autoLoop: backgroundAutoLoop,
+      alertThreshold: alertThreshold
+    };
+  }
+  
+  function triggerBackgroundAlert() {
+    console.log('Background alert triggered - soundAlert:', soundAlert, 'mode:', backgroundTimerMode);
+    if (!soundAlert) return;
+
+    // If a custom sound is configured, play it
+    if (customSoundPath && customSoundPath.trim() !== '') {
+      console.log('Playing custom sound:', customSoundPath);
+      playCustomAlertSound(customSoundPath, soundVolume);
+      return;
+    }
+
+    // No custom sound configured -> use default packaged sound.
+    console.log('Playing default packaged sound');
+    playDefaultPackagedSound();
+  }
+  
+  // IPC handlers for unified background timer
+  ipcMain.handle('get-background-timer-state', () => {
+    return getBackgroundTimerState();
+  });
+  
+  ipcMain.on('start-background-timer', (event, data) => {
+    startBackgroundTimer(data.mode, data.initialSeconds || 0, data.countdownTime || 90, data.autoLoop || false);
+  });
+  
+  ipcMain.on('stop-background-timer', () => {
+    stopBackgroundTimer();
+  });
+  
+  ipcMain.on('pause-background-timer', () => {
+    pauseBackgroundTimer();
+  });
+  
+  ipcMain.on('resume-background-timer', () => {
+    resumeBackgroundTimer();
+  });
+  
+  ipcMain.on('reset-background-timer', () => {
+    resetBackgroundTimer();
+  });
+  
+  ipcMain.on('update-background-timer-settings', (event, data) => {
+    if (data.countdownTime !== undefined) backgroundCountdownTime = data.countdownTime;
+    if (data.autoLoop !== undefined) backgroundAutoLoop = data.autoLoop;
+    if (data.alertThreshold !== undefined) alertThreshold = data.alertThreshold;
+    console.log('Background timer settings updated:', data);
+  });
+
+  // ==================== END UNIFIED BACKGROUND TIMER ====================
+
   // Stopwatch IPC handlers
   
   // Handler for stopwatch panel to get current timer state on load
@@ -998,6 +1272,8 @@ app.whenReady().then(() => {
       clearInterval(gameClickTimerInterval);
       gameClickTimerInterval = null;
       console.log('Game-click timer paused');
+      // When paused due to input, keep the title visible showing current seconds
+      updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     }
   });
 
@@ -1009,6 +1285,7 @@ app.whenReady().then(() => {
         tickGameClickTimer();
       }, 1000);
       console.log('Game-click timer resumed');
+      updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     }
   });
 
