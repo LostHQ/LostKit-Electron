@@ -179,6 +179,7 @@ let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
 let soundAlert = false; // Whether sound alerts are enabled
 let soundVolume = 60; // Sound volume level
 let customSoundPath = ''; // Path to custom sound file
+let defaultPackagedSoundPath = ''; // Path to default packaged sound
 // Game-click AFK timer (runs in background, independent of stopwatch panel)
 let gameClickTimerRunning = false;
 let gameClickTimerInterval = null;
@@ -279,8 +280,33 @@ function updateBounds() {
   mainWindow.webContents.send('update-resizer', chatHeight);
 }
 
+// Initialize default packaged sound path
+function initDefaultPackagedSoundPath() {
+  try {
+    const possiblePaths = [
+      path.join(__dirname, 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+      path.join(process.resourcesPath, 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+      path.join(__dirname, 'src', 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+    ];
+    
+    for (const testPath of possiblePaths) {
+      if (fs.existsSync(testPath)) {
+        defaultPackagedSoundPath = testPath;
+        console.log('Found default packaged sound at:', defaultPackagedSoundPath);
+        return;
+      }
+    }
+    console.log('Default packaged sound not found, checked paths:', possiblePaths);
+  } catch (e) {
+    console.log('Error initializing default packaged sound path:', e);
+  }
+}
+
 
 app.whenReady().then(() => {
+  // Initialize default packaged sound path
+  initDefaultPackagedSoundPath();
+  
   if (typeof appSettings.navPanelCollapsed === 'boolean') {
     navPanelCollapsed = appSettings.navPanelCollapsed;
   }
@@ -782,8 +808,26 @@ app.whenReady().then(() => {
       return;
     }
 
-    // No custom sound configured -> use default beep.
-    console.log('Playing default beep');
+    // No custom sound configured -> use default packaged sound.
+    console.log('Playing default packaged sound');
+    playDefaultPackagedSound();
+  }
+  
+  function playDefaultPackagedSound() {
+    // Try to play the default packaged sound via the renderer (most reliable)
+    if (defaultPackagedSoundPath && fs.existsSync(defaultPackagedSoundPath)) {
+      if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('play-alert-sound', {
+          customSoundPath: defaultPackagedSoundPath,
+          soundVolume
+        });
+        console.log('Sent default packaged sound to renderer:', defaultPackagedSoundPath);
+        return;
+      }
+    }
+    
+    // Fall back to generated beep if packaged sound not available
+    console.log('Default packaged sound not available, falling back to beep');
     playDefaultBeep();
   }
 

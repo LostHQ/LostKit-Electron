@@ -14,16 +14,96 @@ let alertThreshold = 10; // NEW: Seconds before end to alert (default 10s)
 let color = '#00ff00';
 let opacity = 100;
 
+// Maximum countdown time in seconds (24 hours = 86400 seconds)
+const MAX_COUNTDOWN_SECONDS = 86400;
+
 // Config file path for persistent settings
 const configPath = path.join(process.env.APPDATA || process.env.HOME, '.lostkit-stopwatch-config.json');
 
 // Sounds directory path in user app data
 const soundsDir = path.join(process.env.APPDATA || path.join(process.env.HOME, '.config'), 'LostKit', 'sounds');
 
+// Default packaged sound path (relative to app)
+let defaultPackagedSoundPath = '';
+
 // Ensure sounds directory exists
 if (!fs.existsSync(soundsDir)) {
     fs.mkdirSync(soundsDir, { recursive: true });
     console.log('Created sounds directory:', soundsDir);
+}
+
+// Initialize default packaged sound path
+function initDefaultSoundPath() {
+    try {
+        // The default sound is in assets/sound/ relative to the app
+        // In development, __dirname points to navitems folder
+        // In production, we need to find the correct path
+        const possiblePaths = [
+            path.join(__dirname, '..', 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+            path.join(process.resourcesPath, 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+            path.join(__dirname, 'assets', 'sound', "Bell_(Wizards'_Guild)_ringing.wav.ogg"),
+        ];
+        
+        for (const testPath of possiblePaths) {
+            if (fs.existsSync(testPath)) {
+                defaultPackagedSoundPath = testPath;
+                console.log('Found default packaged sound at:', defaultPackagedSoundPath);
+                return;
+            }
+        }
+        console.log('Default packaged sound not found, checked paths:', possiblePaths);
+    } catch (e) {
+        console.log('Error initializing default sound path:', e);
+    }
+}
+
+// Parse time input - supports both "90" (seconds) and "1:30" (minutes:seconds) formats
+function parseTimeInput(input) {
+    if (!input || typeof input !== 'string') {
+        return { seconds: 90, valid: false };
+    }
+    
+    const trimmed = input.trim();
+    
+    // Check if it contains a colon (minutes:seconds format)
+    if (trimmed.includes(':')) {
+        const parts = trimmed.split(':');
+        if (parts.length === 2) {
+            const minutes = parseInt(parts[0]) || 0;
+            const seconds = parseInt(parts[1]) || 0;
+            
+            if (minutes < 0 || seconds < 0 || seconds > 59) {
+                return { seconds: 90, valid: false };
+            }
+            
+            const totalSeconds = minutes * 60 + seconds;
+            return { seconds: totalSeconds, valid: true, isMinutesFormat: true };
+        }
+        return { seconds: 90, valid: false };
+    } else {
+        // Plain seconds format
+        const seconds = parseInt(trimmed);
+        if (isNaN(seconds) || seconds < 1) {
+            return { seconds: 90, valid: false };
+        }
+        return { seconds: seconds, valid: true, isMinutesFormat: false };
+    }
+}
+
+// Format seconds to display string (for input field)
+function formatTimeInput(totalSeconds) {
+    if (totalSeconds >= 60 && totalSeconds % 60 === 0) {
+        // Even minutes - show as minutes:seconds
+        const mins = Math.floor(totalSeconds / 60);
+        return `${mins}:00`;
+    } else if (totalSeconds >= 60) {
+        // Show as minutes:seconds
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    // Less than 60 seconds - show as plain seconds
+    return totalSeconds.toString();
 }
 
 // DOM Elements
@@ -296,8 +376,8 @@ function playBeep() {
             const audio = new Audio(`file://${customSoundPath}`);
             audio.volume = soundVolume / 100;
             audio.play().catch(e => {
-                console.log('Failed to play custom sound, falling back to default beep:', e);
-                playDefaultBeep();
+                console.log('Failed to play custom sound, falling back to default packaged sound:', e);
+                playDefaultPackagedSound();
             });
             console.log('Custom sound played:', customSoundPath);
             setTimeout(() => { soundPlayed = false; }, 10000);
@@ -307,7 +387,30 @@ function playBeep() {
         }
     }
 
-    // Fall back to default beep
+    // Use default packaged sound instead of generated beep
+    playDefaultPackagedSound();
+}
+
+function playDefaultPackagedSound() {
+    // Try to play the default packaged sound
+    if (defaultPackagedSoundPath && fs.existsSync(defaultPackagedSoundPath)) {
+        try {
+            const audio = new Audio(`file://${defaultPackagedSoundPath}`);
+            audio.volume = soundVolume / 100;
+            audio.play().then(() => {
+                console.log('Default packaged sound played at volume:', soundVolume);
+            }).catch(e => {
+                console.log('Failed to play default packaged sound, falling back to generated beep:', e);
+                playDefaultBeep();
+            });
+            setTimeout(() => { soundPlayed = false; }, 10000);
+            return;
+        } catch (e) {
+            console.log('Error playing default packaged sound:', e);
+        }
+    }
+    
+    // Fall back to generated beep if packaged sound not available
     playDefaultBeep();
 }
 
@@ -482,15 +585,15 @@ stopwatchBtn.addEventListener('click', () => setMode('stopwatch'));
 
 // Countdown time input - update instantly as user types
 countdownTimeInput.addEventListener('input', () => {
-    let newTime = parseInt(countdownTimeInput.value);
+    const parsed = parseTimeInput(countdownTimeInput.value);
+    let newTime = parsed.seconds;
     
     // Validate input
-    if (isNaN(newTime) || newTime < 1) {
+    if (!parsed.valid || newTime < 1) {
         newTime = 1;
     }
-    if (newTime > 999) {
-        newTime = 999;
-        countdownTimeInput.value = 999;
+    if (newTime > MAX_COUNTDOWN_SECONDS) {
+        newTime = MAX_COUNTDOWN_SECONDS;
     }
     
     countdownTime = newTime;
@@ -505,18 +608,19 @@ countdownTimeInput.addEventListener('input', () => {
 
 // Also handle blur event to ensure valid value when user leaves the field
 countdownTimeInput.addEventListener('blur', () => {
-    let newTime = parseInt(countdownTimeInput.value);
+    const parsed = parseTimeInput(countdownTimeInput.value);
+    let newTime = parsed.seconds;
     
-    if (isNaN(newTime) || newTime < 1) {
+    if (!parsed.valid || newTime < 1) {
         newTime = 1;
-        countdownTimeInput.value = 1;
     }
-    if (newTime > 999) {
-        newTime = 999;
-        countdownTimeInput.value = 999;
+    if (newTime > MAX_COUNTDOWN_SECONDS) {
+        newTime = MAX_COUNTDOWN_SECONDS;
     }
     
     countdownTime = newTime;
+    // Update input to show formatted time
+    countdownTimeInput.value = formatTimeInput(countdownTime);
     saveConfig();
     
     if (currentMode === 'countdown') {
@@ -537,16 +641,18 @@ soundAlertCheckbox.addEventListener('change', () => {
 // Alert threshold input
 alertThresholdInput.addEventListener('input', (e) => {
     let value = parseInt(e.target.value);
+    const maxThreshold = Math.max(89, countdownTime - 1);
     if (isNaN(value) || value < 1) value = 1;
-    if (value > 89) value = 89;
+    if (value > maxThreshold) value = maxThreshold;
     alertThreshold = value;
     alertThresholdInput.value = value;
 });
 
 alertThresholdInput.addEventListener('change', (e) => {
     let value = parseInt(e.target.value);
+    const maxThreshold = Math.max(89, countdownTime - 1);
     if (isNaN(value) || value < 1) value = 1;
-    if (value > 89) value = 89;
+    if (value > maxThreshold) value = maxThreshold;
     alertThreshold = value;
     alertThresholdInput.value = value;
     saveConfig();
@@ -595,22 +701,22 @@ volumeSlider.addEventListener('change', (e) => {
     saveConfig();
     ipcRenderer.send('update-stopwatch-setting', 'soundVolume', soundVolume);
     
-    // Play custom sound if available, otherwise default beep
+    // Play custom sound if available, otherwise default packaged sound
     if (customSoundPath && fs.existsSync(customSoundPath)) {
         try {
             const audio = new Audio(`file://${customSoundPath}`);
             audio.volume = soundVolume / 100;
             audio.play().catch(e => {
                 console.log('Failed to play custom sound:', e);
-                playTestBeep(soundVolume);
+                playDefaultPackagedSound();
             });
             console.log('Custom sound preview played at volume:', soundVolume);
         } catch (e) {
             console.log('Error playing custom sound preview:', e);
-            playTestBeep(soundVolume);
+            playDefaultPackagedSound();
         }
     } else {
-        playTestBeep(soundVolume);
+        playDefaultPackagedSound();
     }
 });
 
@@ -682,6 +788,7 @@ customSoundInput.addEventListener('change', (e) => {
 });
 
 // Initialize by loading config
+initDefaultSoundPath();
 loadConfig();
 setMode('afk');
 colorPicker.value = color;
@@ -693,6 +800,7 @@ alertThresholdInput.value = alertThreshold;
 volumeSlider.value = soundVolume;
 volumeValue.textContent = `${soundVolume}%`;
 afkGameClickCheckbox.checked = afkGameClick;
+countdownTimeInput.value = formatTimeInput(countdownTime);
 if (afkInputTypeSelect) {
     afkInputTypeSelect.value = afkInputType;
 }
@@ -791,14 +899,14 @@ ipcRenderer.on('play-alert-sound', (event, data) => {
                 console.log('Background alert sound played:', data.customSoundPath);
             }).catch(e => {
                 console.log('Failed to play background alert sound:', e);
-                playDefaultBeep();
+                playDefaultPackagedSound();
             });
         } catch (e) {
             console.log('Error playing background alert sound:', e);
-            playDefaultBeep();
+            playDefaultPackagedSound();
         }
     } else {
-        playDefaultBeep();
+        playDefaultPackagedSound();
     }
 });
 
