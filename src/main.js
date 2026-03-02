@@ -320,48 +320,55 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('get-screenshot-folder', () => getScreenshotFolder());
   ipcMain.on('open-screenshot-folder', () => shell.openPath(getScreenshotFolder()));
+  ipcMain.on('open-calculator', () => {
+    require('child_process').exec('calc.exe', { windowsHide: false });
+  });
   function takeScreenshot() {
     const mainPV = primaryViews.find(p => p.id === currentTab);
     if (!mainPV || !mainPV.view || !mainPV.view.webContents) return;
-    mainPV.view.webContents.capturePage().then((image) => {
-      const folder = getScreenshotFolder();
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filepath = path.join(folder, `screenshot-${timestamp}.png`);
-      try {
-        fs.writeFileSync(filepath, image.toPNG());
-        log.info('Screenshot saved:', filepath);
-        // Play screenshot sound if enabled
-        if (appSettings.screenshotSoundEnabled !== false) {
-          const vol = appSettings.screenshotSoundVolume !== undefined ? appSettings.screenshotSoundVolume : 80;
-          const custom = appSettings.screenshotCustomSoundPath;
-          // Use custom sound if set and exists, otherwise fall back to bloom
-          let soundPath = null;
-          if (custom && custom.trim() !== '') {
-            try { if (fs.existsSync(custom)) soundPath = custom; } catch(e) {}
-          }
-          if (!soundPath) {
-            const bloomPaths = [
-              path.join(__dirname, 'assets', 'sound', 'Bloom.ogg.mp3'),
-              path.join(__dirname, '..', 'assets', 'sound', 'Bloom.ogg.mp3'),
-              path.join(__dirname, 'src', 'assets', 'sound', 'Bloom.ogg.mp3'),
-            ];
-            if (process.resourcesPath) {
-              bloomPaths.push(path.join(process.resourcesPath, 'assets', 'sound', 'Bloom.ogg.mp3'));
-              bloomPaths.push(path.join(process.resourcesPath, 'app', 'assets', 'sound', 'Bloom.ogg.mp3'));
-              bloomPaths.push(path.join(process.resourcesPath, 'app', 'src', 'assets', 'sound', 'Bloom.ogg.mp3'));
-            }
-            soundPath = bloomPaths.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } }) || null;
-          }
-          if (soundPath && mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-            log.info('Playing screenshot sound:', soundPath, 'vol:', vol);
-            mainWindow.webContents.send('play-alert-sound', { customSoundPath: soundPath, soundVolume: vol });
-          } else if (!soundPath) {
-            log.warn('Screenshot sound not found');
-          }
-        }
-      } catch (e) { log.error('Failed to save screenshot:', e); }
-    }).catch(e => log.error('capturePage failed:', e));
+    // Use canvas-based capture via preload so we get only the game canvas,
+    // not the entire BrowserView bounds. The preload responds with 'save-screenshot'.
+    mainPV.view.webContents.send('request-screenshot');
   }
+  // Canvas-based screenshot save (from gameview-preload.js canvas capture)
+  ipcMain.on('save-screenshot', (event, dataUrl) => {
+    if (!dataUrl) return;
+    const folder = getScreenshotFolder();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filepath = path.join(folder, `screenshot-${timestamp}.png`);
+    try {
+      fs.writeFileSync(filepath, dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+      log.info('Screenshot saved:', filepath);
+      // Play screenshot sound if enabled
+      if (appSettings.screenshotSoundEnabled !== false) {
+        const vol = appSettings.screenshotSoundVolume !== undefined ? appSettings.screenshotSoundVolume : 80;
+        const custom = appSettings.screenshotCustomSoundPath;
+        let soundPath = null;
+        if (custom && custom.trim() !== '') {
+          try { if (fs.existsSync(custom)) soundPath = custom; } catch(e) {}
+        }
+        if (!soundPath) {
+          const bloomPaths = [
+            path.join(__dirname, 'assets', 'sound', 'Bloom.ogg.mp3'),
+            path.join(__dirname, '..', 'assets', 'sound', 'Bloom.ogg.mp3'),
+            path.join(__dirname, 'src', 'assets', 'sound', 'Bloom.ogg.mp3'),
+          ];
+          if (process.resourcesPath) {
+            bloomPaths.push(path.join(process.resourcesPath, 'assets', 'sound', 'Bloom.ogg.mp3'));
+            bloomPaths.push(path.join(process.resourcesPath, 'app', 'assets', 'sound', 'Bloom.ogg.mp3'));
+            bloomPaths.push(path.join(process.resourcesPath, 'app', 'src', 'assets', 'sound', 'Bloom.ogg.mp3'));
+          }
+          soundPath = bloomPaths.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } }) || null;
+        }
+        if (soundPath && mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+          log.info('Playing screenshot sound:', soundPath, 'vol:', vol);
+          mainWindow.webContents.send('play-alert-sound', { customSoundPath: soundPath, soundVolume: vol });
+        } else if (!soundPath) {
+          log.warn('Screenshot sound not found');
+        }
+      }
+    } catch (e) { log.error('Failed to save screenshot:', e); }
+  });
   ipcMain.on('capture-screenshot', () => takeScreenshot());
 
   let currentScreenshotAccelerator = null;
@@ -487,6 +494,11 @@ app.whenReady().then(() => {
   function captureAdventureScreenshot() {
     const mainPV = primaryViews.find(p => p.id === currentTab);
     if (!mainPV || !mainPV.view || !mainPV.view.webContents) return;
+    // Use canvas-based capture via preload so we get only the game canvas
+    mainPV.view.webContents.send('request-adventure-screenshot');
+  }
+  ipcMain.on('save-adventure-screenshot', (event, dataUrl) => {
+    if (!dataUrl) return;
     const now = new Date();
     const dd = String(now.getDate()).padStart(2, '0');
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -496,26 +508,16 @@ app.whenReady().then(() => {
     const ss = String(now.getSeconds()).padStart(2, '0');
     const dayFolder = `${dd}-${mm}-${yy}`;
     const filename = `${dd}-${mm}-${yy}_${hh}-${min}-${ss}.png`;
-
-    mainPV.view.webContents.capturePage().then((image) => {
-      let folderPath = getScreenshotFolder();
-      if (appSettings.createAdventureFolder) folderPath = path.join(folderPath, 'Adventure Capture', dayFolder);
-      fs.mkdir(folderPath, { recursive: true }, (err) => {
-        if (err) { console.error('Error creating adventure capture folder:', err); return; }
-        fs.writeFile(path.join(folderPath, filename), image.toPNG(), (err) => {
-          if (err) console.error('Error saving adventure screenshot:', err);
-          else console.log('Adventure screenshot saved:', filename);
-        });
+    let folderPath = getScreenshotFolder();
+    if (appSettings.createAdventureFolder) folderPath = path.join(folderPath, 'Adventure Capture', dayFolder);
+    fs.mkdir(folderPath, { recursive: true }, (err) => {
+      if (err) { console.error('Error creating adventure capture folder:', err); return; }
+      const buf = Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+      fs.writeFile(path.join(folderPath, filename), buf, (err) => {
+        if (err) console.error('Error saving adventure screenshot:', err);
+        else console.log('Adventure screenshot saved:', filename);
       });
-    }).catch(e => console.error('Adventure capturePage failed:', e));
-  }
-  ipcMain.on('save-screenshot', (event, dataUrl) => {
-    if (!dataUrl) return;
-    const folder = getScreenshotFolder();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filepath = path.join(folder, `screenshot-${timestamp}.png`);
-    try { fs.writeFileSync(filepath, dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64'); log.info('Screenshot saved:', filepath); }
-    catch (e) { log.error('Failed to save screenshot:', e); }
+    });
   });
 
   setTimeout(() => checkForUpdates(), 3000);
