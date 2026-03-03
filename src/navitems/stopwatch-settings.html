@@ -157,11 +157,64 @@
             margin-bottom: 12px;
             color: #ffd700;
         }
+
+        /* Tab navigation */
+        .tab-bar {
+            display: flex;
+            border-bottom: 2px solid #8b6914;
+            margin-bottom: 16px;
+        }
+
+        .tab-btn {
+            padding: 8px 18px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #888;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 13px;
+            cursor: pointer;
+            margin-bottom: -2px;
+            transition: color 0.2s;
+            border-radius: 0;
+            transform: none;
+        }
+
+        .tab-btn:hover {
+            color: #f0e68c;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            transform: none;
+        }
+
+        .tab-btn.active {
+            color: #f0e68c;
+            border-bottom: 3px solid #8b6914;
+            background: transparent;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
     <div class="settings-container">
-        <div class="settings-title">Screenshot Settings</div>
+        <div class="settings-title">Settings</div>
+
+        <!-- Tab bar -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('screenshots', this)">Screenshots</button>
+            <button class="tab-btn" onclick="switchTab('appearance', this)">Appearance</button>
+        </div>
+
+        <!-- Screenshots tab -->
+        <div id="tab-screenshots" class="tab-panel active">
 
         <!-- Adventure Capture Section -->
         <div class="folder-section">
@@ -241,6 +294,80 @@
             </div>
         </div>
 
+        <!-- Screenshot Sound Section -->
+        <div class="folder-section">
+            <div class="section-label">Screenshot Sound</div>
+
+            <div class="setting-row">
+                <label>Enable:</label>
+                <label class="sound-checkbox-label">
+                    <input type="checkbox" id="screenshot-sound-checkbox">
+                    <span class="sound-checkmark"></span>
+                    <span>Play sound on screenshot</span>
+                </label>
+            </div>
+
+            <div class="setting-row">
+                <label>Volume:</label>
+                <div class="range-wrapper">
+                    <input type="range" id="screenshot-sound-volume" min="0" max="100" value="80" step="5">
+                    <span class="range-value" id="screenshot-sound-volume-value">80%</span>
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <label>Sound File:</label>
+                <div style="display: flex; gap: 4px; flex: 1;">
+                    <button onclick="document.getElementById('screenshot-sound-input').click();" style="flex: 1;">Add Sound</button>
+                    <button onclick="toggleScreenshotSoundManager();" style="flex: 1;">Manage</button>
+                </div>
+            </div>
+            <div id="screenshot-sound-label" style="font-size: 10px; color: #b8a060; margin-bottom: 6px; padding-left: 4px;">Using default (Bloom)</div>
+            <input type="file" id="screenshot-sound-input" accept="audio/*" style="display: none;">
+
+            <!-- Sound list -->
+            <div id="screenshot-sound-manager" style="display: none; margin-top: 6px;">
+                <div id="screenshot-sound-list" style="display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto;"></div>
+            </div>
+
+            <div class="setting-row" style="justify-content: flex-end; margin-top: 4px;">
+                <button onclick="testScreenshotSound()">Test Sound</button>
+            </div>
+        </div>
+
+        </div><!-- end tab-screenshots -->
+
+        <!-- Appearance tab -->
+        <div id="tab-appearance" class="tab-panel">
+            <div class="folder-section">
+                <div class="section-label">Interface Font</div>
+                <div style="color: #b8a060; font-size: 11px; margin-bottom: 12px; line-height: 1.5;">
+                    Changes the default font used across the entire interface.<br>
+                    Takes effect immediately and is saved for future sessions.
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border: 2px solid #555; border-radius: 4px; transition: border-color 0.15s;" id="font-opt-quill">
+                        <input type="radio" name="appFont" value="quill" id="font-radio-quill" style="accent-color: #8b6914; width: 16px; height: 16px; cursor: pointer;">
+                        <div>
+                            <div style="font-size: 14px; color: #f0e68c; font-weight: bold;">RuneScape Quill</div>
+                            <div style="font-size: 11px; color: #888; margin-top: 2px;">Default handwritten style (RuneScape-Quill-8)</div>
+                        </div>
+                    </label>
+
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border: 2px solid #555; border-radius: 4px; transition: border-color 0.15s;" id="font-opt-bold">
+                        <input type="radio" name="appFont" value="bold" id="font-radio-bold" style="accent-color: #8b6914; width: 16px; height: 16px; cursor: pointer;">
+                        <div>
+                            <div style="font-size: 14px; color: #f0e68c; font-weight: bold;">RuneScape Bold</div>
+                            <div style="font-size: 11px; color: #888; margin-top: 2px;">Cleaner, more readable style (RuneScape-Bold-12)</div>
+                        </div>
+                    </label>
+                </div>
+
+                <div id="font-apply-status" style="margin-top: 10px; font-size: 11px; color: #4CAF50; min-height: 16px;"></div>
+            </div>
+        </div><!-- end tab-appearance -->
+
         <div style="text-align: center; margin-top: 16px;">
             <button onclick="closeWindow()">Close</button>
         </div>
@@ -260,6 +387,11 @@
         
         const screenshotKeybindInput = document.getElementById('screenshot-keybind-input');
         const keybindStatus = document.getElementById('keybind-status');
+        const screenshotSoundCheckbox = document.getElementById('screenshot-sound-checkbox');
+        const screenshotSoundVolume = document.getElementById('screenshot-sound-volume');
+        const screenshotSoundVolumeValue = document.getElementById('screenshot-sound-volume-value');
+        const screenshotSoundLabel = document.getElementById('screenshot-sound-label');
+        const screenshotSoundInput = document.getElementById('screenshot-sound-input');
 
         // State
         let adventureCaptureEnabled = false;
@@ -269,6 +401,9 @@
         let createAdventureFolder = true;
         let screenshotKeybind = '';
         let isCapturingKeybind = false;
+        let screenshotSoundEnabled = true;
+        let screenshotSoundVol = 80;
+        let screenshotCustomSoundPath = ''; // empty = use default bloom
 
         // Load settings from main process
         ipcRenderer.on('load-settings', (event, settings) => {
@@ -277,6 +412,9 @@
             captureInterval = settings.captureInterval || 60;
             randomInterval = settings.randomInterval || false;
             createAdventureFolder = settings.createAdventureFolder !== false;
+            screenshotSoundEnabled = settings.screenshotSoundEnabled !== false;
+            screenshotSoundVol = settings.screenshotSoundVolume !== undefined ? settings.screenshotSoundVolume : 80;
+            screenshotCustomSoundPath = settings.screenshotCustomSoundPath || '';
 
             // Update UI
             adventureCaptureCheckbox.checked = adventureCaptureEnabled;
@@ -285,9 +423,38 @@
             captureIntervalValue.textContent = captureInterval + 's';
             randomIntervalCheckbox.checked = randomInterval;
             createAdventureFolderCheckbox.checked = createAdventureFolder;
+            screenshotSoundCheckbox.checked = screenshotSoundEnabled;
+            screenshotSoundVolume.value = screenshotSoundVol;
+            screenshotSoundVolumeValue.textContent = screenshotSoundVol + '%';
+            updateScreenshotSoundLabel();
 
             updateStatus();
+
+            // Font setting
+            const fontVal = settings.appFont || 'quill';
+            const radio = document.querySelector(`input[name="appFont"][value="${fontVal}"]`);
+            if (radio) radio.checked = true;
+            updateFontOptionStyles(fontVal);
         });
+
+        // Font radio handlers — fire immediately on change
+        document.querySelectorAll('input[name="appFont"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                const val = radio.value;
+                ipcRenderer.send('set-app-font', val);
+                updateFontOptionStyles(val);
+                const status = document.getElementById('font-apply-status');
+                if (status) {
+                    status.textContent = 'Applied!';
+                    setTimeout(() => { status.textContent = ''; }, 1500);
+                }
+            });
+        });
+
+        function updateFontOptionStyles(val) {
+            document.getElementById('font-opt-quill').style.borderColor = val === 'quill' ? '#8b6914' : '#555';
+            document.getElementById('font-opt-bold').style.borderColor  = val === 'bold'  ? '#8b6914' : '#555';
+        }
 
         function updateStatus() {
             if (adventureCaptureEnabled) {
@@ -319,9 +486,151 @@
                 screenshotFolder,
                 captureInterval,
                 randomInterval,
-                createAdventureFolder
+                createAdventureFolder,
+                screenshotSoundEnabled,
+                screenshotSoundVolume: screenshotSoundVol,
+                screenshotCustomSoundPath
             });
             updateStatus();
+        }
+
+        // Screenshot sound label helper
+        function updateScreenshotSoundLabel() {
+            if (screenshotCustomSoundPath) {
+                const parts = screenshotCustomSoundPath.replace(/\\/g, '/').split('/');
+                screenshotSoundLabel.textContent = 'Custom: ' + parts[parts.length - 1];
+                screenshotSoundLabel.style.color = '#51cf66';
+            } else {
+                screenshotSoundLabel.textContent = 'Using default (Bloom)';
+                screenshotSoundLabel.style.color = '#b8a060';
+            }
+        }
+
+        // Screenshot sound handlers
+        screenshotSoundCheckbox.addEventListener('change', () => {
+            screenshotSoundEnabled = screenshotSoundCheckbox.checked;
+            saveSettings();
+        });
+
+        screenshotSoundVolume.addEventListener('input', (e) => {
+            screenshotSoundVol = parseInt(e.target.value);
+            screenshotSoundVolumeValue.textContent = screenshotSoundVol + '%';
+        });
+
+        screenshotSoundVolume.addEventListener('change', () => {
+            saveSettings();
+        });
+
+        // Custom sound file picker
+        screenshotSoundInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            const file = files[0];
+            const soundsDir = null; // resolved in main via IPC
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const buffer = Buffer.from(event.target.result);
+                ipcRenderer.invoke('get-sounds-dir').then(dir => {
+                    const destPath = require('path').join(dir, file.name);
+                    ipcRenderer.invoke('copy-sound-file', buffer, destPath).then(success => {
+                        if (success) {
+                            screenshotCustomSoundPath = destPath;
+                            updateScreenshotSoundLabel();
+                            saveSettings();
+                            refreshScreenshotSoundList();
+                            // Preview
+                            try {
+                                const audio = new Audio('file://' + destPath);
+                                audio.volume = screenshotSoundVol / 100;
+                                audio.play().catch(() => {});
+                            } catch(e) {}
+                        }
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
+            // Reset input so same file can be re-selected
+            e.target.value = '';
+        });
+
+        function toggleScreenshotSoundManager() {
+            const mgr = document.getElementById('screenshot-sound-manager');
+            if (mgr.style.display === 'none') {
+                mgr.style.display = 'block';
+                refreshScreenshotSoundList();
+            } else {
+                mgr.style.display = 'none';
+            }
+        }
+
+        function refreshScreenshotSoundList() {
+            ipcRenderer.invoke('get-sounds-dir').then(dir => {
+                ipcRenderer.invoke('list-sound-files', dir).then(files => {
+                    const list = document.getElementById('screenshot-sound-list');
+                    list.innerHTML = '';
+
+                    // Default option
+                    const defBtn = document.createElement('div');
+                    const isDefault = !screenshotCustomSoundPath;
+                    defBtn.style.cssText = `padding: 6px; background: ${isDefault ? '#3a5a3a' : '#2a2a2a'}; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;`;
+                    defBtn.innerHTML = '<span style="flex:1;">Default (Bloom)</span>';
+                    defBtn.onclick = () => {
+                        screenshotCustomSoundPath = '';
+                        updateScreenshotSoundLabel();
+                        saveSettings();
+                        refreshScreenshotSoundList();
+                    };
+                    list.appendChild(defBtn);
+
+                    files.forEach(filename => {
+                        const fullPath = require('path').join(dir, filename);
+                        const isActive = screenshotCustomSoundPath === fullPath;
+
+                        const row = document.createElement('div');
+                        row.style.cssText = `padding: 6px; background: ${isActive ? '#3a5a3a' : '#2a2a2a'}; border: 1px solid #555; border-radius: 2px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 10px; color: #f0e68c;`;
+
+                        const nameSpan = document.createElement('span');
+                        nameSpan.style.flex = '1';
+                        nameSpan.textContent = filename;
+
+                        const delBtn = document.createElement('button');
+                        delBtn.textContent = 'Delete';
+                        delBtn.style.cssText = 'padding: 2px 6px; background: #8b2222; border: 1px solid #c00; border-radius: 2px; color: #fff; cursor: pointer; font-size: 9px;';
+                        delBtn.onclick = (ev) => {
+                            ev.stopPropagation();
+                            ipcRenderer.invoke('delete-sound-file', fullPath).then(ok => {
+                                if (ok) {
+                                    if (screenshotCustomSoundPath === fullPath) {
+                                        screenshotCustomSoundPath = '';
+                                        updateScreenshotSoundLabel();
+                                        saveSettings();
+                                    }
+                                    refreshScreenshotSoundList();
+                                }
+                            });
+                        };
+
+                        row.appendChild(nameSpan);
+                        row.appendChild(delBtn);
+                        row.onclick = () => {
+                            screenshotCustomSoundPath = fullPath;
+                            updateScreenshotSoundLabel();
+                            saveSettings();
+                            refreshScreenshotSoundList();
+                            try {
+                                const audio = new Audio('file://' + fullPath);
+                                audio.volume = screenshotSoundVol / 100;
+                                audio.play().catch(() => {});
+                            } catch(e) {}
+                        };
+                        list.appendChild(row);
+                    });
+                });
+            });
+        }
+
+        function testScreenshotSound() {
+            ipcRenderer.send('test-screenshot-sound', screenshotSoundVol, screenshotCustomSoundPath);
         }
 
         // Event handlers
@@ -481,6 +790,14 @@
 
         // Request settings on load
         ipcRenderer.send('request-stopwatch-settings');
+
+        // Tab switching
+        function switchTab(name, btn) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.add('active');
+            btn.classList.add('active');
+        }
     </script>
 </body>
 </html>

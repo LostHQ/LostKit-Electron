@@ -9,7 +9,7 @@ let soundAlert = false;
 let soundVolume = 60;
 let autoLoop = false;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
-let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
+let afkInputType = 'click'; // game click — hover mode removed
 let customSoundPath = ''; // Path to custom sound file
 let alertThreshold = 10; // Seconds before end to alert (default 10s)
 let color = '#00ff00';
@@ -274,7 +274,6 @@ function playDefaultBeep() {
         osc.stop(audioContext.currentTime + 0.3);
         
         console.log('Default beep played at volume:', soundVolume);
-        setTimeout(() => { soundPlayed = false; }, 10000);
         
     } catch (e) {
         console.log('Error playing default beep:', e);
@@ -295,7 +294,6 @@ function playBeep() {
                 playDefaultPackagedSound();
             });
             console.log('Custom sound played:', customSoundPath);
-            setTimeout(() => { soundPlayed = false; }, 10000);
             return;
         } catch (e) {
             console.log('Error playing custom sound:', e);
@@ -318,7 +316,6 @@ function playDefaultPackagedSound() {
                 console.log('Failed to play default packaged sound, falling back to generated beep:', e);
                 playDefaultBeep();
             });
-            setTimeout(() => { soundPlayed = false; }, 10000);
             return;
         } catch (e) {
             console.log('Error playing default packaged sound:', e);
@@ -346,10 +343,11 @@ function updateDisplay() {
         const remaining = 90 - seconds;
         
         if (remaining <= 0) {
-            // Show negative time (how long since timer expired)
+            // Past logout — show negative time, static red, no flash
             timerDisplay.textContent = formatTime(remaining);
-            timerDisplay.classList.add('flash-red');
+            timerDisplay.classList.remove('flash-red');
             timerDisplay.style.color = '#ff0000';
+            // soundPlayed stays true — no replay when drifting negative
         } else {
             timerDisplay.textContent = formatTime(remaining);
             
@@ -408,17 +406,25 @@ function updateDisplay() {
 function updateModeOptionsVisibility() {
     // Hide all mode-specific options first
     if (afkModeOptions) afkModeOptions.style.display = 'none';
-    
-    // Show options based on current mode
+
+    const controlButtons = document.getElementById('stopwatch-control-buttons');
+    const autoLoopRow = document.getElementById('auto-loop-row');
+
     if (currentMode === 'afk') {
         if (afkModeOptions) afkModeOptions.style.display = 'block';
+        // In AFK mode: the input checkbox drives start/stop — hide buttons and auto-loop
+        if (controlButtons) controlButtons.style.display = 'none';
+        if (autoLoopRow) autoLoopRow.style.display = 'none';
+    } else {
+        if (controlButtons) controlButtons.style.display = 'flex';
+        if (autoLoopRow) autoLoopRow.style.display = 'flex';
     }
-    
+
     // Countdown settings are shown in setMode function already
 }
 
 function tick() {
-    // For AFK mode, keep counting past 90 (for negative display)
+    // For AFK mode, keep counting indefinitely (display goes negative past 90s)
     // For countdown mode, stop at max time (unless auto-loop)
     if (currentMode === 'countdown') {
         if (seconds >= countdownTime) {
@@ -671,21 +677,57 @@ autoLoopCheckbox.addEventListener('change', () => {
     ipcRenderer.send('update-background-timer-settings', { autoLoop: autoLoop });
 });
 
-// AFK Game Click checkbox
+// AFK Game Click checkbox — also starts/stops the AFK timer
 afkGameClickCheckbox.addEventListener('change', () => {
     afkGameClick = afkGameClickCheckbox.checked;
     saveConfig();
     console.log('nav panel: afkGameClick changed ->', afkGameClick);
     ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
+    updateAfkInputTypeRowVisibility();
+
+    if (currentMode !== 'afk') return;
+
+    if (afkGameClick) {
+        // Checkbox turned ON → start the AFK timer from scratch
+        seconds = 0;
+        soundPlayed = false;
+        timerDisplay.classList.remove('flash-red');
+        timerDisplay.style.color = color;
+        if (interval) clearInterval(interval);
+        interval = setInterval(tick, 1000);
+        running = true;
+        ipcRenderer.send('resume-game-click-timer');
+        updateDisplay();
+    } else {
+        // Checkbox turned OFF → stop and reset to 1:30
+        if (interval) { clearInterval(interval); interval = null; }
+        running = false;
+        seconds = 0;
+        soundPlayed = false;
+        timerDisplay.classList.remove('flash-red');
+        timerDisplay.style.color = color;
+        timerDisplay.textContent = '01:30';
+        ipcRenderer.send('pause-game-click-timer');
+        ipcRenderer.send('reset-game-click-timer');
+        ipcRenderer.send('stop-background-timer');
+    }
 });
 
-// AFK Input Type select
-afkInputTypeSelect.addEventListener('change', () => {
-    afkInputType = afkInputTypeSelect.value;
-    saveConfig();
-    console.log('nav panel: afkInputType changed ->', afkInputType);
-    ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
-});
+// AFK input type dropdown
+if (afkInputTypeSelect) {
+    afkInputTypeSelect.addEventListener('change', () => {
+        afkInputType = afkInputTypeSelect.value;
+        saveConfig();
+        ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
+    });
+}
+
+// Show/hide input type row based on checkbox state (helper used at init too)
+function updateAfkInputTypeRowVisibility() {
+    if (afkInputTypeRow) {
+        afkInputTypeRow.style.display = afkGameClick ? 'flex' : 'none';
+    }
+}
 
 // Play test beep and send volume setting when user releases the volume slider
 volumeSlider.addEventListener('change', (e) => {
@@ -885,6 +927,7 @@ countdownTimeInput.value = formatTimeInput(countdownTime);
 if (afkInputTypeSelect) {
     afkInputTypeSelect.value = afkInputType;
 }
+updateAfkInputTypeRowVisibility();
 if (customSoundPath) {
     const soundFileName = path.basename(customSoundPath);
     customSoundLabel.textContent = 'Custom Sound: ' + soundFileName;
@@ -1024,6 +1067,39 @@ ipcRenderer.on('sound-selected', (event, soundPath) => {
     }
     
     console.log('Sound selected from manager:', soundPath);
+});
+
+// Listen for hover-pause signal: cursor entered canvas OR mouse moved again after idle
+// → PAUSE timer and reset display to 1:30
+ipcRenderer.on('afk-hover-paused', () => {
+    if (currentMode !== 'afk') return;
+    console.log('nav panel: afk-hover-paused — stopping & resetting display');
+    if (interval) {
+        clearInterval(interval);
+        interval = null;
+    }
+    seconds = 0;
+    soundPlayed = false;
+    timerDisplay.classList.remove('flash-red');
+    timerDisplay.style.color = color;
+    timerDisplay.textContent = '01:30';
+    // Keep running state so resume knows to restart
+});
+
+// Listen for hover-resume signal: cursor went IDLE inside canvas OR cursor LEFT canvas
+// → START/RESTART countdown from 1:30
+ipcRenderer.on('afk-hover-resumed', () => {
+    if (currentMode !== 'afk') return;
+    console.log('nav panel: afk-hover-resumed — restarting display from 0');
+    seconds = 0;
+    soundPlayed = false;
+    timerDisplay.classList.remove('flash-red');
+    timerDisplay.style.color = color;
+    if (interval) clearInterval(interval);
+    interval = setInterval(tick, 1000);
+    running = true;
+    startBtn.textContent = 'Pause';
+    updateDisplay();
 });
 
 // Listen for game-click background timer ticks to sync display

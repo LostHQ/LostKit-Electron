@@ -4,177 +4,360 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { height: 100%; overflow: hidden; }
-        
+
         @font-face {
             font-family: 'RS-Bold';
             src: url('../assets/fonts/RuneScape-Bold-12.otf') format('opentype');
         }
+        @font-face {
+            font-family: 'RS-Plain';
+            src: url('../assets/fonts/RuneScape-Plain-12.otf') format('opentype');
+        }
+
+        :root {
+            --gold:        #f0e68c;
+            --gold-dim:    #b8a060;
+            --gold-border: #8b6914;
+            --gold-deep:   #5a4209;
+            --bg:          #1a1a1a;
+            --bg-panel:    #222222;
+            --bg-input:    #2a2a2a;
+            --bg-hover:    #2f2f2f;
+            --bg-active:   #333320;
+            --text:        #f0e68c;
+            --text-dim:    #888;
+            --danger:      #c0392b;
+            --danger-h:    #e74c3c;
+            --radius:      4px;
+        }
 
         body {
             font-family: 'RS-Bold', monospace;
-            background: #222222;
-            color: #f0e68c;
-            padding: 12px;
+            background: var(--bg);
+            color: var(--text);
             display: flex;
             flex-direction: column;
+            height: 100%;
+            user-select: none;
         }
 
-        .header {
+        /* ── TAB BAR ─────────────────────────────────────────── */
+        .tab-bar {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
+            align-items: stretch;
+            background: var(--bg-panel);
+            border-bottom: 2px solid var(--gold-border);
+            overflow-x: auto;
+            overflow-y: hidden;
+            min-height: 42px;
+            flex-shrink: 0;
         }
 
-        .title {
-            font-size: 22px;
-            font-weight: bold;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-        }
-
-        .controls {
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-
-        button {
-            padding: 8px 14px;
-            background: url('../assets/button.jpg') repeat;
-            border: 2px outset #8b6914;
-            border-radius: 3px;
-            color: #f0e68c;
-            font-weight: bold;
-            font-size: 13px;
-            font-family: 'RS-Bold', monospace;
-            cursor: pointer;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-        }
-
-        button:hover {
-            border: 2px inset #8b6914;
-            transform: translateY(1px);
-        }
-
-        .new-section {
-            display: flex;
-            gap: 6px;
-            margin-bottom: 12px;
-        }
-
-        .new-section input {
-            flex: 1;
-            padding: 8px 10px;
-            background: #2a2a2a;
-            border: 1px solid #555;
-            border-radius: 3px;
-            color: #f0e68c;
-            font-family: 'RS-Bold', monospace;
-            font-size: 13px;
-        }
-
-        .new-section input:focus {
-            outline: none;
-            border-color: #8b6914;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-        }
+        .tab-bar::-webkit-scrollbar { height: 3px; }
+        .tab-bar::-webkit-scrollbar-track { background: transparent; }
+        .tab-bar::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 2px; }
 
         .tab {
-            padding: 6px 12px;
-            background: url('../assets/button.jpg') repeat;
-            border: 2px outset #8b6914;
-            border-radius: 3px;
-            color: #f0e68c;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 12px 0 15px;
+            min-width: 100px;
+            max-width: 190px;
+            height: 42px;
+            border-right: 1px solid var(--gold-deep);
             cursor: pointer;
-            font-size: 12px;
+            font-size: 13px;
             font-family: 'RS-Bold', monospace;
+            color: var(--text-dim);
+            flex-shrink: 0;
+            position: relative;
+            transition: background 0.1s, color 0.1s;
+            white-space: nowrap;
         }
 
-        .tab:hover { border: 2px inset #8b6914; }
-        .tab.active { border: 2px inset #8b6914; background-color: rgba(139, 105, 20, 0.4); }
+        .tab:hover { background: var(--bg-hover); color: var(--text); }
 
-        .editor {
+        .tab.active {
+            background: var(--bg-active);
+            color: var(--gold);
+            border-bottom: 2px solid var(--gold-border);
+            margin-bottom: -2px;
+        }
+
+        .tab.active::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--gold-border);
+        }
+
+        .tab-name {
             flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .tab-name-input {
+            flex: 1;
+            background: var(--bg-input);
+            border: 1px solid var(--gold-border);
+            border-radius: 2px;
+            color: var(--gold);
+            font-family: 'RS-Bold', monospace;
+            font-size: 11px;
+            padding: 1px 4px;
+            min-width: 0;
+            outline: none;
+            user-select: text;
+        }
+
+        .tab-close {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 2px;
+            font-size: 15px;
+            color: var(--text-dim);
+            line-height: 1;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.15s, background 0.15s, color 0.15s;
+        }
+
+        .tab:hover .tab-close,
+        .tab.active .tab-close { opacity: 1; }
+
+        .tab-close:hover { background: var(--danger); color: #fff; opacity: 1; }
+
+        .tab-add {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            cursor: pointer;
+            font-size: 22px;
+            color: var(--gold-dim);
+            flex-shrink: 0;
+            transition: color 0.15s, background 0.15s;
+            border-right: 1px solid var(--gold-deep);
+        }
+
+        .tab-add:hover { background: var(--bg-hover); color: var(--gold); }
+
+        /* ── TOOLBAR ──────────────────────────────────────────── */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--gold-deep);
+            flex-shrink: 0;
+        }
+
+        .toolbar-label {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-right: 2px;
+        }
+
+        .tb-btn {
+            padding: 5px 14px;
+            background: url('../assets/button.jpg') repeat;
+            background-size: auto;
+            border: 2px outset var(--gold-border);
+            border-radius: var(--radius);
+            color: var(--gold);
+            font-family: 'RS-Bold', monospace;
+            font-size: 13px;
+            cursor: pointer;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            line-height: 1.4;
+            transition: transform 0.1s;
+        }
+
+        .tb-btn:hover { border-style: inset; transform: translateY(1px); }
+        .tb-btn:active { transform: translateY(2px); }
+
+        .tb-btn.danger {
+            color: #ff8080;
+        }
+
+        .tb-divider {
+            width: 1px;
+            height: 22px;
+            background: var(--gold-deep);
+            margin: 0 2px;
+        }
+
+        .font-size-display {
+            font-size: 13px;
+            color: var(--gold-dim);
+            min-width: 40px;
+            text-align: center;
+        }
+
+        /* ── EDITOR ───────────────────────────────────────────── */
+        .editor-wrap {
+            flex: 1;
+            min-height: 0;
+            position: relative;
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            min-height: 0;
         }
 
         textarea {
             flex: 1;
             width: 100%;
-            padding: 8px;
-            background: #2a2a2a;
-            border: 1px solid #555;
-            border-radius: 3px;
-            color: #f0e68c;
-            font-family: 'RS-Bold', monospace;
-            font-size: 11px;
+            padding: 14px 16px;
+            background: var(--bg);
+            border: none;
+            color: var(--gold);
+            font-family: 'RS-Plain', monospace;
+            font-size: 14px;
             resize: none;
-        }
-
-        textarea:focus {
             outline: none;
-            border-color: #8b6914;
+            line-height: 1.7;
+            tab-size: 4;
+            user-select: text;
+            caret-color: var(--gold);
         }
 
-        .empty {
-            flex: 1;
+        textarea::selection { background: rgba(139, 105, 20, 0.4); }
+
+        textarea::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track { background: var(--bg-panel); }
+        textarea::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 4px; }
+
+        /* ── STATUS BAR ───────────────────────────────────────── */
+        .status-bar {
             display: flex;
             align-items: center;
+            justify-content: space-between;
+            padding: 4px 12px;
+            background: var(--bg-panel);
+            border-top: 1px solid var(--gold-deep);
+            font-size: 12px;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .status-bar span { font-family: 'RS-Plain', monospace; }
+
+        /* ── EMPTY STATE ──────────────────────────────────────── */
+        .empty-state {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             justify-content: center;
-            color: #888;
-            font-size: 14px;
+            gap: 12px;
+            color: var(--text-dim);
+            font-size: 13px;
         }
 
-        #fontSize { min-width: 45px; text-align: center; font-size: 13px; }
-
-        .rename-mode {
-            background: #3a3a3a !important;
-            border-color: #8b6914 !important;
+        .empty-icon {
+            font-size: 36px;
+            opacity: 0.3;
         }
+
+        .empty-hint {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        /* ── CONFIRM OVERLAY ──────────────────────────────────── */
+        .overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .overlay.show { display: flex; }
+
+        .dialog {
+            background: var(--bg-panel);
+            border: 2px solid var(--gold-border);
+            border-radius: 6px;
+            padding: 20px 24px;
+            min-width: 240px;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+
+        .dialog p { font-size: 13px; margin-bottom: 16px; color: var(--gold); }
+        .dialog p span { color: var(--gold-dim); font-size: 11px; display: block; margin-top: 4px; }
+
+        .dialog-btns { display: flex; gap: 8px; justify-content: center; }
+
+        .dialog-btns .tb-btn { padding: 6px 22px; font-size: 13px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="title">Notes</div>
-        <div class="controls">
-            <button id="btnMinus">−</button>
-            <span id="fontSize">100%</span>
-            <button id="btnPlus">+</button>
-            <button id="btnRename" style="margin-left: 8px;">Rename</button>
-            <button id="btnDelete">Delete</button>
+
+    <!-- Tab bar -->
+    <div class="tab-bar" id="tabBar">
+        <div class="tab-add" id="btnAdd" title="New note (Enter)">＋</div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <span class="toolbar-label">Font:</span>
+        <button class="tb-btn" id="btnMinus" title="Decrease font size">−</button>
+        <span class="font-size-display" id="fontSizeDisplay">100%</span>
+        <button class="tb-btn" id="btnPlus" title="Increase font size">+</button>
+        <div class="tb-divider"></div>
+        <button class="tb-btn" id="btnRename" title="Rename tab (double-click tab)">Rename</button>
+        <button class="tb-btn danger" id="btnDelete" title="Delete current note">Delete</button>
+    </div>
+
+    <!-- Editor / empty state -->
+    <div class="editor-wrap" id="editorWrap">
+        <textarea id="content" placeholder="Start writing…" spellcheck="false"></textarea>
+    </div>
+
+    <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📝</div>
+        <div>No notes yet</div>
+        <div class="empty-hint">Click ＋ or press Enter to create one</div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+        <span id="statusLeft">—</span>
+        <span id="statusRight">Ln 1, Col 1</span>
+    </div>
+
+    <!-- Delete confirm dialog -->
+    <div class="overlay" id="overlay">
+        <div class="dialog">
+            <p>Delete this note?<span id="deleteTargetName"></span></p>
+            <div class="dialog-btns">
+                <button class="tb-btn danger" id="confirmDelete">Delete</button>
+                <button class="tb-btn" id="cancelDelete">Cancel</button>
+            </div>
         </div>
     </div>
 
-    <div class="new-section">
-        <input type="text" id="inputName" placeholder="Enter name or click New for default...">
-        <button id="btnNew">New</button>
-    </div>
-
-    <div class="tabs" id="tabs"></div>
-
-    <div class="editor" id="editor" style="display: none;">
-        <textarea id="content" placeholder="Write your notes here..."></textarea>
-    </div>
-
-    <div class="empty" id="empty">No note instances yet. Click "New" above!</div>
-
     <script>
         const { ipcRenderer } = require('electron');
-        
+
+        // ── State ──────────────────────────────────────────────────────────────
         let data = { instances: {}, fontSize: 100 };
         let current = null;
-        let renameMode = false;
+        let renamingTab = null; // key of tab being renamed inline
 
-        // Load data on startup
+        // ── IPC bootstrap ──────────────────────────────────────────────────────
         ipcRenderer.invoke('load-notes').then(loaded => {
             if (loaded && loaded.instances) {
                 data.instances = loaded.instances;
@@ -184,219 +367,299 @@
             render();
         });
 
-        // Window resize
         ipcRenderer.on('window-resized', (e, size) => {
             ipcRenderer.send('save-notes-window-size', size);
         });
 
-        // Button events - use mousedown to avoid focus issues
-        document.getElementById('btnNew').onmousedown = function(e) {
-            e.preventDefault();
-            createInstance();
-        };
-        document.getElementById('btnDelete').onmousedown = function(e) {
-            e.preventDefault();
-            deleteInstance();
-        };
-        document.getElementById('btnRename').onmousedown = function(e) {
-            e.preventDefault();
-            startRename();
-        };
-        document.getElementById('btnPlus').onmousedown = function(e) {
-            e.preventDefault();
-            changeFont(10);
-        };
-        document.getElementById('btnMinus').onmousedown = function(e) {
-            e.preventDefault();
-            changeFont(-10);
-        };
-
-        // Input field events
-        const inputName = document.getElementById('inputName');
-        inputName.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (renameMode) {
-                    finishRename();
-                } else {
-                    createInstance();
-                }
-            } else if (e.key === 'Escape' && renameMode) {
-                cancelRename();
-            }
-        });
-
-        // Auto-save on typing
-        let saveTimer;
-        document.getElementById('content').addEventListener('input', function() {
-            clearTimeout(saveTimer);
-            saveTimer = setTimeout(saveContent, 1000);
-        });
-
-        function getNextDefaultName() {
-            let num = 1;
-            while (data.instances['Note ' + num]) {
-                num++;
-            }
-            return 'Note ' + num;
+        // ── Save ────────────────────────────────────────────────────────────────
+        let saveTimer = null;
+        function save() {
+            ipcRenderer.send('save-notes', data);
         }
-
-        function createInstance() {
-            if (renameMode) {
-                cancelRename();
-                return;
-            }
-            
-            let name = inputName.value.trim();
-            
-            // If no name provided, use default
-            if (!name) {
-                name = getNextDefaultName();
-            }
-            
-            if (data.instances[name]) {
-                alert('Name "' + name + '" already exists!');
-                inputName.value = '';
-                inputName.focus();
-                return;
-            }
-            
-            // Save current content first
+        function saveDebounced() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(save, 800);
+        }
+        function flushCurrentContent() {
             if (current && data.instances[current]) {
                 data.instances[current].content = document.getElementById('content').value;
             }
-            
+        }
+
+        // ── Render ──────────────────────────────────────────────────────────────
+        function render() {
+            const tabBar  = document.getElementById('tabBar');
+            const btnAdd  = document.getElementById('btnAdd');
+            const content = document.getElementById('content');
+            const keys    = Object.keys(data.instances);
+            const hasCurrent = current && data.instances[current];
+
+            // Font size
+            const fs = data.fontSize || 100;
+            document.getElementById('fontSizeDisplay').textContent = fs + '%';
+            content.style.fontSize = Math.round(14 * fs / 100) + 'px';
+
+            // Rebuild tabs (keep add-button at front)
+            tabBar.innerHTML = '';
+            tabBar.appendChild(btnAdd);
+
+            keys.forEach(key => {
+                const tab = document.createElement('div');
+                tab.className = 'tab' + (key === current ? ' active' : '');
+                tab.dataset.key = key;
+
+                if (renamingTab === key) {
+                    // Inline rename input
+                    const inp = document.createElement('input');
+                    inp.className = 'tab-name-input';
+                    inp.value = key;
+                    inp.maxLength = 40;
+                    inp.setAttribute('data-rename', key);
+                    tab.appendChild(inp);
+                    tab.appendChild(makeCloseBtn(key));
+                    tabBar.appendChild(tab);
+
+                    // Focus after DOM is live
+                    requestAnimationFrame(() => { inp.focus(); inp.select(); });
+
+                    inp.addEventListener('keydown', e => {
+                        if (e.key === 'Enter')  { e.preventDefault(); commitRename(key, inp.value); }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                        e.stopPropagation();
+                    });
+                    inp.addEventListener('blur', () => {
+                        // Small delay so click on confirm doesn't race
+                        setTimeout(() => { if (renamingTab === key) commitRename(key, inp.value); }, 120);
+                    });
+                } else {
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'tab-name';
+                    nameSpan.textContent = key;
+                    tab.appendChild(nameSpan);
+                    tab.appendChild(makeCloseBtn(key));
+
+                    tab.addEventListener('mousedown', e => {
+                        if (e.target.classList.contains('tab-close')) return;
+                        e.preventDefault();
+                        if (renamingTab) cancelRename();
+                        switchTo(key);
+                    });
+
+                    // Double-click to rename
+                    tab.addEventListener('dblclick', e => {
+                        if (e.target.classList.contains('tab-close')) return;
+                        e.preventDefault();
+                        startRename(key);
+                    });
+
+                    tabBar.appendChild(tab);
+                }
+            });
+
+            // Editor / empty state
+            document.getElementById('editorWrap').style.display  = hasCurrent ? 'flex' : 'none';
+            document.getElementById('emptyState').style.display  = hasCurrent ? 'none'  : 'flex';
+
+            if (hasCurrent) {
+                content.value = data.instances[current].content || '';
+                updateStatus();
+            }
+
+            updateStatusLeft();
+        }
+
+        function makeCloseBtn(key) {
+            const btn = document.createElement('span');
+            btn.className = 'tab-close';
+            btn.textContent = '×';
+            btn.title = 'Delete note';
+            btn.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                showDeleteDialog(key);
+            });
+            return btn;
+        }
+
+        // ── Tab operations ──────────────────────────────────────────────────────
+        function createNote(name) {
+            if (!name) {
+                let n = 1;
+                while (data.instances['Note ' + n]) n++;
+                name = 'Note ' + n;
+            }
+            if (data.instances[name]) {
+                // Just switch to it
+                flushCurrentContent();
+                current = name;
+                save();
+                render();
+                return;
+            }
+            flushCurrentContent();
             data.instances[name] = { content: '', created: new Date().toISOString() };
             current = name;
-            inputName.value = '';
             save();
             render();
-            document.getElementById('content').focus();
+            requestAnimationFrame(() => document.getElementById('content').focus());
         }
 
-        function startRename() {
-            if (!current) {
-                alert('No instance selected to rename!');
-                return;
-            }
-            
-            renameMode = true;
-            inputName.value = current;
-            inputName.placeholder = 'Enter new name, press Enter (Esc to cancel)...';
-            inputName.classList.add('rename-mode');
-            inputName.focus();
-            inputName.select();
+        function switchTo(key) {
+            if (key === current) return;
+            flushCurrentContent();
+            save();
+            current = key;
+            render();
+            requestAnimationFrame(() => document.getElementById('content').focus());
         }
 
-        function finishRename() {
-            const newName = inputName.value.trim();
-            
-            if (!newName) {
-                alert('Please enter a name!');
-                inputName.focus();
+        // ── Rename ──────────────────────────────────────────────────────────────
+        function startRename(key) {
+            flushCurrentContent();
+            renamingTab = key;
+            current = key;
+            render();
+        }
+
+        function commitRename(oldKey, rawValue) {
+            const newKey = rawValue.trim();
+            renamingTab = null;
+
+            if (!newKey || newKey === oldKey) { render(); return; }
+
+            if (data.instances[newKey]) {
+                // Name collision — just cancel
+                render();
                 return;
             }
-            
-            if (newName === current) {
-                cancelRename();
-                return;
-            }
-            
-            if (data.instances[newName]) {
-                alert('Name "' + newName + '" already exists!');
-                inputName.focus();
-                inputName.select();
-                return;
-            }
-            
-            // Copy instance to new name
-            data.instances[newName] = data.instances[current];
-            delete data.instances[current];
-            current = newName;
-            
-            cancelRename();
+
+            // Rebuild preserving order
+            const rebuilt = {};
+            Object.keys(data.instances).forEach(k => {
+                rebuilt[k === oldKey ? newKey : k] = data.instances[k];
+            });
+            data.instances = rebuilt;
+            if (current === oldKey) current = newKey;
             save();
             render();
         }
 
         function cancelRename() {
-            renameMode = false;
-            inputName.value = '';
-            inputName.placeholder = 'Enter name or click New for default...';
-            inputName.classList.remove('rename-mode');
-        }
-
-        function deleteInstance() {
-            if (renameMode) {
-                cancelRename();
-            }
-            
-            if (!current) {
-                alert('No instance selected!');
-                return;
-            }
-            
-            if (!confirm('Delete "' + current + '"?')) return;
-            
-            delete data.instances[current];
-            current = Object.keys(data.instances)[0] || null;
-            save();
+            renamingTab = null;
             render();
         }
 
-        function saveContent() {
-            if (!current || !data.instances[current]) return;
-            data.instances[current].content = document.getElementById('content').value;
-            save();
+        // ── Delete ──────────────────────────────────────────────────────────────
+        let pendingDelete = null;
+
+        function showDeleteDialog(key) {
+            pendingDelete = key;
+            document.getElementById('deleteTargetName').textContent = key;
+            document.getElementById('overlay').classList.add('show');
         }
 
-        function changeFont(delta) {
-            data.fontSize = Math.max(70, Math.min(150, data.fontSize + delta));
+        document.getElementById('confirmDelete').addEventListener('click', () => {
+            if (!pendingDelete) return;
+            const keys = Object.keys(data.instances);
+            const idx  = keys.indexOf(pendingDelete);
+            delete data.instances[pendingDelete];
+            if (current === pendingDelete) {
+                const remaining = Object.keys(data.instances);
+                current = remaining[Math.min(idx, remaining.length - 1)] || null;
+            }
+            pendingDelete = null;
+            document.getElementById('overlay').classList.remove('show');
             save();
             render();
-        }
+        });
 
-        function save() {
-            ipcRenderer.send('save-notes', data);
-        }
+        document.getElementById('cancelDelete').addEventListener('click', () => {
+            pendingDelete = null;
+            document.getElementById('overlay').classList.remove('show');
+        });
 
-        function render() {
-            // Font size display
-            document.getElementById('fontSize').textContent = data.fontSize + '%';
-            document.getElementById('content').style.fontSize = (11 * data.fontSize / 100) + 'px';
+        // ── Toolbar buttons ─────────────────────────────────────────────────────
+        document.getElementById('btnAdd').addEventListener('mousedown', e => {
+            e.preventDefault();
+            if (renamingTab) cancelRename();
+            createNote();
+        });
 
-            // Render tabs
-            const tabsEl = document.getElementById('tabs');
-            tabsEl.innerHTML = '';
-            Object.keys(data.instances).forEach(name => {
-                const tab = document.createElement('div');
-                tab.className = 'tab' + (name === current ? ' active' : '');
-                tab.textContent = name;
-                tab.onmousedown = function(e) {
-                    e.preventDefault();
-                    if (renameMode) cancelRename();
-                    switchTo(name);
-                };
-                tabsEl.appendChild(tab);
-            });
+        document.getElementById('btnRename').addEventListener('mousedown', e => {
+            e.preventDefault();
+            if (!current) return;
+            startRename(current);
+        });
 
-            // Show/hide editor
-            const hasInstance = current && data.instances[current];
-            document.getElementById('editor').style.display = hasInstance ? 'flex' : 'none';
-            document.getElementById('empty').style.display = hasInstance ? 'none' : 'flex';
-            
-            if (hasInstance) {
-                document.getElementById('content').value = data.instances[current].content || '';
-            }
-        }
+        document.getElementById('btnDelete').addEventListener('mousedown', e => {
+            e.preventDefault();
+            if (!current) return;
+            showDeleteDialog(current);
+        });
 
-        function switchTo(name) {
+        document.getElementById('btnPlus').addEventListener('mousedown', e => {
+            e.preventDefault();
+            data.fontSize = Math.min(200, (data.fontSize || 100) + 10);
+            save(); render();
+        });
+
+        document.getElementById('btnMinus').addEventListener('mousedown', e => {
+            e.preventDefault();
+            data.fontSize = Math.max(60, (data.fontSize || 100) - 10);
+            save(); render();
+        });
+
+        // ── Textarea events ─────────────────────────────────────────────────────
+        const contentEl = document.getElementById('content');
+
+        contentEl.addEventListener('input', () => {
             if (current && data.instances[current]) {
-                data.instances[current].content = document.getElementById('content').value;
+                data.instances[current].content = contentEl.value;
             }
-            current = name;
-            save();
-            render();
+            saveDebounced();
+            updateStatus();
+        });
+
+        contentEl.addEventListener('keydown', e => {
+            // Tab → insert spaces
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = contentEl.selectionStart;
+                const end   = contentEl.selectionEnd;
+                contentEl.value = contentEl.value.slice(0, start) + '    ' + contentEl.value.slice(end);
+                contentEl.selectionStart = contentEl.selectionEnd = start + 4;
+            }
+        });
+
+        contentEl.addEventListener('keyup',   updateStatus);
+        contentEl.addEventListener('click',   updateStatus);
+        contentEl.addEventListener('mouseup', updateStatus);
+
+        // Global keyboard shortcut: Enter on empty body = new note
+        document.addEventListener('keydown', e => {
+            if (renamingTab) return;
+            if (document.activeElement === contentEl) return;
+            if (e.key === 'Enter') { e.preventDefault(); createNote(); }
+        });
+
+        // ── Status bar ──────────────────────────────────────────────────────────
+        function updateStatus() {
+            const val = contentEl.value;
+            const pos = contentEl.selectionStart;
+            const lines = val.slice(0, pos).split('\n');
+            const ln  = lines.length;
+            const col = lines[lines.length - 1].length + 1;
+            const words = val.trim() === '' ? 0 : val.trim().split(/\s+/).length;
+            const chars = val.length;
+            document.getElementById('statusRight').textContent = `Ln ${ln}, Col ${col}`;
+            document.getElementById('statusLeft').textContent  = `${chars} chars · ${words} words`;
+        }
+
+        function updateStatusLeft() {
+            const keys = Object.keys(data.instances);
+            if (!current || keys.length === 0) {
+                document.getElementById('statusLeft').textContent = 'No notes';
+            }
         }
     </script>
 </body>

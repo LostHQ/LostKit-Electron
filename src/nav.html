@@ -15,6 +15,9 @@
             <div class="nav-button screenshot-btn" onclick="openSettingsPopup()" title="Settings">
                 <img src="assets/settings.png" class="nav-icon">
             </div>
+            <div class="nav-button screenshot-btn" onclick="ipcRenderer.send('open-calculator')" title="Calculator">
+                <img src="assets/calculator.png" class="nav-icon" style="width:30px; height:30px;">
+            </div>
         </div>
         <div class="nav-button special-link" onclick="openNav('worldswitcher')">
             <img src="assets/LostCity.png" class="nav-icon">

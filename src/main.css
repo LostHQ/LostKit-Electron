@@ -124,7 +124,12 @@ body {
 .nav-buttons-top .nav-icon {
     width: 18px;
     height: 18px;
-    margin-right: 6px;
+    margin-right: 0;
+}
+
+.nav-buttons-top .nav-button {
+    align-items: center;
+    justify-content: center;
 }
 
 .nav-buttons-top span {
@@ -925,12 +930,16 @@ button:active, .btn:active {
 
 .stopwatch-panel .mode-btn {
     flex: 0 1 auto;
-    padding: 8px 12px;
-    font-size: 11px;
+    padding: 8px 12px !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    min-height: 0 !important;
     font-weight: bold;
     text-transform: uppercase;
     font-family: 'RS-Plain', sans-serif;
     min-width: 70px;
+    text-align: center;
+    justify-content: center;
 }
 
 .stopwatch-panel .mode-btn.active {
