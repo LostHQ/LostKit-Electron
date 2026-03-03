@@ -15,23 +15,14 @@ window.addEventListener('wheel', (e) => {
     } catch (err) {
         // ignore
     }
-}, { passive: false, capture: true });
+}, { passive: false });
 
-// Detect clicks and hover on game view for AFK timer reset
+// Detect clicks on game view for AFK timer reset
 window.addEventListener('DOMContentLoaded', () => {
     // Mouse click detection
     document.addEventListener('mousedown', () => {
         ipcRenderer.send('game-view-mouse-clicked');
     }, true);
-
-    // Hover enter/leave — fires once on transition, no jitter.
-    // main.js decides whether to act based on afkInputType === 'hover'.
-    document.addEventListener('mouseenter', () => {
-        ipcRenderer.send('game-view-hover-enter');
-    });
-    document.addEventListener('mouseleave', () => {
-        ipcRenderer.send('game-view-hover-leave');
-    });
     
     // Keyboard press detection
     document.addEventListener('keydown', () => {

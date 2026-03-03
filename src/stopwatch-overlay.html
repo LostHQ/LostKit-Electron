@@ -173,8 +173,11 @@
         beepOscillator.stop(audioContext.currentTime + 0.3);
         
         console.log('Beep sound played at volume:', soundVolume);
-        // soundPlayed is reset only when the timer resets — never on a timeout,
-        // so it cannot replay when drifting into negative time.
+        
+        // Reset sound flag after 10 seconds
+        setTimeout(() => {
+          soundPlayed = false;
+        }, 10000);
         
       } catch (e) {
         console.log('Error playing beep:', e);
@@ -238,25 +241,24 @@
       return `${sign}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    let alertThreshold = 10; // synced from panel via update-setting
-
     function updateDisplay() {
       if (mode === 'afk' || mode === 'countdown') {
         const maxTime = mode === 'afk' ? targetTime : customTime;
         const remaining = maxTime - seconds;
 
-        if (remaining <= 0 && mode === 'afk') {
-          // AFK: past logout threshold — show negative time, static red, NO sound replay
+        if (remaining < 0 && mode === 'afk') {
+          // In AFK mode allow negative time (time since exceeding target)
           timerEl.textContent = formatTime(remaining);
-          timerEl.classList.remove('flash-red');
+          timerEl.classList.add('flash-red');
           timerEl.style.color = '#ff0000';
-          // soundPlayed stays true — never replay once we've gone negative
+          // Keep running until user interacts; sound logic handled when crossing thresholds
         } else if (remaining <= 0) {
-          // Countdown mode finished
+          // Timer finished (countdown mode or exact zero)
           timerEl.textContent = '00:00';
           timerEl.classList.remove('flash-red');
           timerEl.style.color = '#ff0000';
 
+          // If auto-loop is enabled, restart the timer
           if (autoLoop && running) {
             seconds = 0;
             soundPlayed = false;
@@ -265,18 +267,23 @@
             return;
           }
 
-          if (running) {
+          // Stop the timer for countdown mode
+          if (mode === 'countdown' && running) {
             clearInterval(interval);
             running = false;
             startBtn.textContent = 'Start';
           }
 
+          // Reset sound flag
           soundPlayed = false;
         } else {
           timerEl.textContent = formatTime(remaining);
 
-          if (remaining <= alertThreshold) {
+          // Flash red and play sound at 10 seconds and below
+          if (remaining <= 10) {
             timerEl.classList.add('flash-red');
+
+            // Play sound once if enabled
             if (soundAlertEnabled && !soundPlayed) {
               playBeep();
               soundPlayed = true;
@@ -296,11 +303,12 @@
     }
 
     function tick() {
-      // For countdown mode stop at the target (unless auto-loop handles it in updateDisplay)
+      // For countdown mode stop at the target; AFK mode continues into negative values
       if (mode === 'countdown') {
         if (seconds >= customTime) return;
       }
-      // AFK mode: always keep incrementing — display shows negative when past targetTime
+
+      // In stopwatch and afk modes, keep counting up
       seconds++;
       updateDisplay();
     }
@@ -340,36 +348,8 @@
       updateDisplay();
     });
 
-    // Mouse entered canvas OR mouse moved again after being idle — PAUSE timer, show 1:30
-    ipcRenderer.on('afk-hover-paused', () => {
-      if (mode !== 'afk') return;
-      console.log('overlay: afk-hover-paused — pausing & resetting display');
-      if (interval) {
-        clearInterval(interval);
-        interval = null;
-      }
-      seconds = 0;
-      soundPlayed = false;
-      timerEl.classList.remove('flash-red');
-      timerEl.style.color = currentColor;
-      timerEl.textContent = '01:30';
-      // running stays as-is so resume knows whether to restart
-    });
-
-    // Mouse went IDLE inside canvas OR mouse LEFT canvas — START/RESTART countdown from 1:30
-    ipcRenderer.on('afk-hover-resumed', () => {
-      if (mode !== 'afk') return;
-      console.log('overlay: afk-hover-resumed — restarting countdown from 0');
-      seconds = 0;
-      soundPlayed = false;
-      timerEl.classList.remove('flash-red');
-      timerEl.style.color = currentColor;
-      if (interval) clearInterval(interval);
-      interval = setInterval(tick, 1000);
-      running = true;
-      startBtn.textContent = 'Pause';
-      updateDisplay();
-    }); (event, newMode, newTime) => {
+    // Listen for mode updates from panel
+    ipcRenderer.on('update-mode', (event, newMode, newTime) => {
       mode = newMode;
       timerEl.classList.remove('flash-red');
       
@@ -436,9 +416,6 @@
       } else if (setting === 'autoLoop') {
         autoLoop = value;
         console.log('Auto-loop set to:', autoLoop);
-      } else if (setting === 'alertThreshold') {
-        alertThreshold = value;
-        console.log('Alert threshold set to:', alertThreshold);
       }
       else if (setting === 'start') {
         // External command to start the AFK countdown immediately
@@ -448,8 +425,6 @@
           if (soundAlertEnabled && !audioContext) initAudio();
           seconds = 0;
           soundPlayed = false;
-          timerEl.classList.remove('flash-red');
-          timerEl.style.color = currentColor;
           if (running) {
             clearInterval(interval);
           }
@@ -459,22 +434,6 @@
           running = true;
           startBtn.textContent = 'Pause';
           updateDisplay();
-        }
-      }
-      else if (setting === 'afk-pause') {
-        // Mouse entered canvas — pause timer and reset display to 1:30
-        if (mode === 'afk') {
-          console.log('overlay: afk-pause — pausing timer');
-          if (running) {
-            clearInterval(interval);
-            interval = null;
-          }
-          seconds = 0;
-          soundPlayed = false;
-          timerEl.classList.remove('flash-red');
-          timerEl.style.color = currentColor;
-          timerEl.textContent = '01:30';
-          // Keep running=true so we know to restart when idle/leave fires
         }
       }
     });

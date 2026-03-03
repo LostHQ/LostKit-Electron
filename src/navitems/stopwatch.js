@@ -9,7 +9,7 @@ let soundAlert = false;
 let soundVolume = 60;
 let autoLoop = false;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
-let afkInputType = 'hover'; // always hover — mouse/keyboard options removed
+let afkInputType = 'mouse'; // 'mouse' or 'both' - what resets the timer
 let customSoundPath = ''; // Path to custom sound file
 let alertThreshold = 10; // Seconds before end to alert (default 10s)
 let color = '#00ff00';
@@ -184,7 +184,7 @@ function loadConfig() {
             soundVolume = config.soundVolume ?? soundVolume;
             autoLoop = config.autoLoop ?? autoLoop;
             afkGameClick = config.afkGameClick ?? afkGameClick;
-            afkInputType = 'hover'; // always hover regardless of saved config
+            afkInputType = config.afkInputType ?? afkInputType;
             
             // Handle custom sound - if filename is stored, reconstruct full path
             if (config.customSoundFilename) {
@@ -274,6 +274,7 @@ function playDefaultBeep() {
         osc.stop(audioContext.currentTime + 0.3);
         
         console.log('Default beep played at volume:', soundVolume);
+        setTimeout(() => { soundPlayed = false; }, 10000);
         
     } catch (e) {
         console.log('Error playing default beep:', e);
@@ -294,6 +295,7 @@ function playBeep() {
                 playDefaultPackagedSound();
             });
             console.log('Custom sound played:', customSoundPath);
+            setTimeout(() => { soundPlayed = false; }, 10000);
             return;
         } catch (e) {
             console.log('Error playing custom sound:', e);
@@ -316,6 +318,7 @@ function playDefaultPackagedSound() {
                 console.log('Failed to play default packaged sound, falling back to generated beep:', e);
                 playDefaultBeep();
             });
+            setTimeout(() => { soundPlayed = false; }, 10000);
             return;
         } catch (e) {
             console.log('Error playing default packaged sound:', e);
@@ -343,11 +346,10 @@ function updateDisplay() {
         const remaining = 90 - seconds;
         
         if (remaining <= 0) {
-            // Past logout — show negative time, static red, no flash
+            // Show negative time (how long since timer expired)
             timerDisplay.textContent = formatTime(remaining);
-            timerDisplay.classList.remove('flash-red');
+            timerDisplay.classList.add('flash-red');
             timerDisplay.style.color = '#ff0000';
-            // soundPlayed stays true — no replay when drifting negative
         } else {
             timerDisplay.textContent = formatTime(remaining);
             
@@ -416,7 +418,7 @@ function updateModeOptionsVisibility() {
 }
 
 function tick() {
-    // For AFK mode, keep counting indefinitely (display goes negative past 90s)
+    // For AFK mode, keep counting past 90 (for negative display)
     // For countdown mode, stop at max time (unless auto-loop)
     if (currentMode === 'countdown') {
         if (seconds >= countdownTime) {
@@ -677,7 +679,13 @@ afkGameClickCheckbox.addEventListener('change', () => {
     ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
 });
 
-// afkInputType is always 'hover' — dropdown removed
+// AFK Input Type select
+afkInputTypeSelect.addEventListener('change', () => {
+    afkInputType = afkInputTypeSelect.value;
+    saveConfig();
+    console.log('nav panel: afkInputType changed ->', afkInputType);
+    ipcRenderer.send('update-stopwatch-setting', 'afkInputType', afkInputType);
+});
 
 // Play test beep and send volume setting when user releases the volume slider
 volumeSlider.addEventListener('change', (e) => {
@@ -1016,39 +1024,6 @@ ipcRenderer.on('sound-selected', (event, soundPath) => {
     }
     
     console.log('Sound selected from manager:', soundPath);
-});
-
-// Listen for hover-pause signal: cursor entered canvas OR mouse moved again after idle
-// → PAUSE timer and reset display to 1:30
-ipcRenderer.on('afk-hover-paused', () => {
-    if (currentMode !== 'afk') return;
-    console.log('nav panel: afk-hover-paused — stopping & resetting display');
-    if (interval) {
-        clearInterval(interval);
-        interval = null;
-    }
-    seconds = 0;
-    soundPlayed = false;
-    timerDisplay.classList.remove('flash-red');
-    timerDisplay.style.color = color;
-    timerDisplay.textContent = '01:30';
-    // Keep running state so resume knows to restart
-});
-
-// Listen for hover-resume signal: cursor went IDLE inside canvas OR cursor LEFT canvas
-// → START/RESTART countdown from 1:30
-ipcRenderer.on('afk-hover-resumed', () => {
-    if (currentMode !== 'afk') return;
-    console.log('nav panel: afk-hover-resumed — restarting display from 0');
-    seconds = 0;
-    soundPlayed = false;
-    timerDisplay.classList.remove('flash-red');
-    timerDisplay.style.color = color;
-    if (interval) clearInterval(interval);
-    interval = setInterval(tick, 1000);
-    running = true;
-    startBtn.textContent = 'Pause';
-    updateDisplay();
 });
 
 // Listen for game-click background timer ticks to sync display

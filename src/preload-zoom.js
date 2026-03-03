@@ -17,4 +17,4 @@ window.addEventListener('wheel', (e) => {
   } catch (err) {
     // ignore
   }
-}, { passive: false, capture: true });
+}, { passive: false });
