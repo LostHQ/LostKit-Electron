@@ -406,20 +406,12 @@ function updateDisplay() {
 function updateModeOptionsVisibility() {
     // Hide all mode-specific options first
     if (afkModeOptions) afkModeOptions.style.display = 'none';
-
-    const controlButtons = document.getElementById('stopwatch-control-buttons');
-    const autoLoopRow = document.getElementById('auto-loop-row');
-
+    
+    // Show options based on current mode
     if (currentMode === 'afk') {
         if (afkModeOptions) afkModeOptions.style.display = 'block';
-        // In AFK mode: the input checkbox drives start/stop — hide buttons and auto-loop
-        if (controlButtons) controlButtons.style.display = 'none';
-        if (autoLoopRow) autoLoopRow.style.display = 'none';
-    } else {
-        if (controlButtons) controlButtons.style.display = 'flex';
-        if (autoLoopRow) autoLoopRow.style.display = 'flex';
     }
-
+    
     // Countdown settings are shown in setMode function already
 }
 
@@ -677,39 +669,12 @@ autoLoopCheckbox.addEventListener('change', () => {
     ipcRenderer.send('update-background-timer-settings', { autoLoop: autoLoop });
 });
 
-// AFK Game Click checkbox — also starts/stops the AFK timer
+// AFK Game Click checkbox
 afkGameClickCheckbox.addEventListener('change', () => {
     afkGameClick = afkGameClickCheckbox.checked;
     saveConfig();
     console.log('nav panel: afkGameClick changed ->', afkGameClick);
     ipcRenderer.send('update-stopwatch-setting', 'afkGameClick', afkGameClick);
-
-    if (currentMode !== 'afk') return;
-
-    if (afkGameClick) {
-        // Checkbox turned ON → start the AFK timer from scratch
-        seconds = 0;
-        soundPlayed = false;
-        timerDisplay.classList.remove('flash-red');
-        timerDisplay.style.color = color;
-        if (interval) clearInterval(interval);
-        interval = setInterval(tick, 1000);
-        running = true;
-        ipcRenderer.send('resume-game-click-timer');
-        updateDisplay();
-    } else {
-        // Checkbox turned OFF → stop and reset to 1:30
-        if (interval) { clearInterval(interval); interval = null; }
-        running = false;
-        seconds = 0;
-        soundPlayed = false;
-        timerDisplay.classList.remove('flash-red');
-        timerDisplay.style.color = color;
-        timerDisplay.textContent = '01:30';
-        ipcRenderer.send('pause-game-click-timer');
-        ipcRenderer.send('reset-game-click-timer');
-        ipcRenderer.send('stop-background-timer');
-    }
 });
 
 // afkInputType is always 'hover' — dropdown removed

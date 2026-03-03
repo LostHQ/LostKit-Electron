@@ -8,10 +8,6 @@
  *
  * Only fires on state transitions — no jitter.
  * Works whether Electron is focused or not.
- *
- * Occlusion detection: uses WindowFromPoint to check that the window actually
- * visible at the cursor position belongs to the Lostkit process. If another
- * window is covering Lostkit, events are suppressed.
  */
 
 const { spawn } = require('child_process');
@@ -32,15 +28,9 @@ let lastX = null;
 let lastY = null;
 let idleFired = false;
 
-// PS_SCRIPT now outputs "x,y,visible" where visible is 1 if the topmost
-// window at (x,y) belongs to the Lostkit process, 0 if occluded.
 const PS_SCRIPT = `
-param([int]$ParentPid = 0)
-
 Add-Type -TypeDefinition @"
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -48,39 +38,14 @@ public class HoverTracker {
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT pt);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr WindowFromPoint(POINT pt);
-
-    [DllImport("user32.dll")]
-    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT { public int X; public int Y; }
 
-    static HashSet<uint> lostkitPids;
-
-    static void CollectPids(int parentPid) {
-        lostkitPids = new HashSet<uint>();
-        try {
-            var parent = Process.GetProcessById(parentPid);
-            string exeName = parent.ProcessName;
-            foreach (var p in Process.GetProcessesByName(exeName))
-                lostkitPids.Add((uint)p.Id);
-        } catch { }
-        if (parentPid > 0) lostkitPids.Add((uint)parentPid);
-    }
-
-    public static void Run(int parentPid) {
-        CollectPids(parentPid);
+    public static void Run() {
         POINT pt;
         while (true) {
             if (GetCursorPos(out pt)) {
-                IntPtr hwnd = WindowFromPoint(pt);
-                uint pid = 0;
-                if (hwnd != IntPtr.Zero)
-                    GetWindowThreadProcessId(hwnd, out pid);
-                int visible = (pid != 0 && lostkitPids.Contains(pid)) ? 1 : 0;
-                Console.WriteLine(pt.X + "," + pt.Y + "," + visible);
+                Console.WriteLine(pt.X + "," + pt.Y);
                 Console.Out.Flush();
             }
             Thread.Sleep(100);
@@ -88,7 +53,7 @@ public class HoverTracker {
     }
 }
 "@
-[HoverTracker]::Run($ParentPid)
+[HoverTracker]::Run()
 `;
 
 function clearIdleTimer() {
@@ -133,8 +98,7 @@ function start(getBounds, onEnter, onLeave, onIdle, idleTimeoutMs) {
     psProcess = spawn('powershell.exe', [
       '-NoProfile',
       '-ExecutionPolicy', 'Bypass',
-      '-File', scriptPath,
-      '-ParentPid', String(process.pid)
+      '-File', scriptPath
     ], {
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true
@@ -149,28 +113,24 @@ function start(getBounds, onEnter, onLeave, onIdle, idleTimeoutMs) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         const parts = trimmed.split(',');
-        if (parts.length !== 3) continue;
+        if (parts.length !== 2) continue;
         const x = parseInt(parts[0]);
         const y = parseInt(parts[1]);
-        const visible = parseInt(parts[2]); // 1 = Lostkit is topmost at cursor
-        if (isNaN(x) || isNaN(y) || isNaN(visible)) continue;
+        if (isNaN(x) || isNaN(y)) continue;
 
         try {
           const bounds = getBoundsCb && getBoundsCb();
           if (!bounds) continue;
 
-          const inBounds = (
+          const isInside = (
             x >= bounds.x &&
             x <= bounds.x + bounds.width &&
             y >= bounds.y &&
             y <= bounds.y + bounds.height
           );
 
-          // Only count as "inside" if cursor is in bounds AND Lostkit
-          // is the topmost window at the cursor (not occluded by another window)
-          const isInside = inBounds && visible === 1;
-
           if (isInside && !wasInside) {
+            // Entered canvas
             wasInside = true;
             idleFired = false;
             lastX = x;
@@ -178,6 +138,7 @@ function start(getBounds, onEnter, onLeave, onIdle, idleTimeoutMs) {
             armIdleTimer();
             if (onEnterCb) onEnterCb();
           } else if (!isInside && wasInside) {
+            // Left canvas
             wasInside = false;
             idleFired = false;
             clearIdleTimer();
@@ -185,14 +146,18 @@ function start(getBounds, onEnter, onLeave, onIdle, idleTimeoutMs) {
             lastY = null;
             if (onLeaveCb) onLeaveCb();
           } else if (isInside && wasInside) {
+            // Still inside — check for movement
             const moved = (x !== lastX || y !== lastY);
             if (moved) {
               lastX = x;
               lastY = y;
               if (idleFired) {
+                // Was idle but mouse moved again — fire onEnter again so the
+                // main process knows to pause the timer (un-idle re-pause)
                 idleFired = false;
                 try { if (onEnterCb) onEnterCb(); } catch (e) {}
               }
+              // Re-arm idle timer on any movement
               armIdleTimer();
             }
           }

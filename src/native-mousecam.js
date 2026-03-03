@@ -4,10 +4,10 @@
  * Replicates mousecam.ahk without AutoHotkey.
  *
  * Uses PowerShell + Win32 SetWindowsHookEx (WH_MOUSE_LL) to:
- *   1. Track middle mouse button WITHOUT swallowing it — so middle-click
- *      still works normally (e.g. closing browser tabs).
+ *   1. Intercept middle mouse button at the OS level and SWALLOW it
+ *      so it never reaches Electron or the game as a click.
  *   2. While middle is held, send arrow keys via keybd_event based
- *      on cursor offset from anchor. Mouse moves pass through freely.
+ *      on cursor offset from anchor — identical to the AHK script.
  *
  * Windows only. start()/stop()/destroy() are safe to call at any time.
  */
@@ -86,13 +86,13 @@ public class MouseCam {
             middleDown = true;
             anchorX = data.pt.X;
             anchorY = data.pt.Y;
-            // pass through — tabs/clicks still work
+            return (IntPtr)1; // swallow — game never sees the click
         }
 
         if (msg == WM_MBUTTONUP) {
             middleDown = false;
             ReleaseAll();
-            // pass through
+            return (IntPtr)1; // swallow
         }
 
         if (msg == WM_MOUSEMOVE && middleDown) {
@@ -102,7 +102,6 @@ public class MouseCam {
             Key(VK_RIGHT, dx < 0, ref rDown);
             Key(VK_DOWN,  dy < 0, ref dDown);
             Key(VK_UP,    dy > 0, ref uDown);
-            // pass through — cursor moves freely
         }
 
         return CallNextHookEx(hookId, nCode, wParam, lParam);
