@@ -19,63 +19,67 @@
                 <img src="assets/calculator.png" class="nav-icon" style="width:30px; height:30px;">
             </div>
         </div>
-        <div class="nav-button special-link" onclick="openNav('worldswitcher')">
+        <div class="nav-button special-link" onclick="openNav('worldswitcher')" data-nav-id="worldswitcher">
             <img src="assets/LostCity.png" class="nav-icon">
             <span>Switch World</span>
         </div>
-        <div class="nav-button special-link" onclick="toggleChat()">
+        <div class="nav-button special-link" onclick="toggleChat()" data-nav-id="chat">
             <img src="assets/chat.png" class="nav-icon">
             <span>Chat</span>
         </div>
-        <div class="nav-button special-link" onclick="openNav('stopwatch')">
+        <div class="nav-button special-link" onclick="openNav('stopwatch')" data-nav-id="stopwatch">
             <img src="assets/watch.png" class="nav-icon" onerror="this.style.display='none'">
             <span>Stopwatch</span>
         </div>
-        <div class="nav-button special-link" onclick="openNav('hiscores')">
+        <div class="nav-button special-link" onclick="openNav('youtube')" data-nav-id="creators">
+            <img src="assets/creators.png" class="nav-icon" onerror="this.style.display='none'">
+            <span>Creators</span>
+        </div>
+        <div class="nav-button special-link" onclick="openNav('hiscores')" data-nav-id="hiscores">
             <img src="assets/hiscores.png" class="nav-icon">
             <span>Hiscores</span>
         </div>
-        <div class="nav-button special-link" onclick="openNotes()">
+        <div class="nav-button special-link" onclick="openNotes()" data-nav-id="notes">
             <img src="assets/notes.png" class="nav-icon" onerror="this.style.display='none'">
             <span>Notes</span>
         </div>
-        <div class="nav-button link" data-url='https://lostcity.rs' data-title="Forums" onclick="addTab('https://lostcity.rs', 'Forums', 'assets/forums.png')">
+        <div class="nav-button link" data-url='https://lostcity.rs' data-nav-id="forums" data-title="Forums" onclick="addTab('https://lostcity.rs', 'Forums', 'assets/forums.png')">
             <img src="assets/forums.png" class="nav-icon">
             <span>Forums</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://tools.losthq.rs/cluecoordinator/' data-title="Coordinates" onclick="addTab('https://tools.losthq.rs/cluecoordinator/', 'Coordinates', 'assets/coordinates.png')">
+        <div class="nav-button link" data-url='https://tools.losthq.rs/cluecoordinator/' data-nav-id="coordinates" data-title="Coordinates" onclick="addTab('https://tools.losthq.rs/cluecoordinator/', 'Coordinates', 'assets/coordinates.png')">
             <img src="assets/coordinates.png" class="nav-icon">
             <span>Coordinates</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://razgals.github.io/Treasure-V2/' data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure-V2/', 'Clue Help', 'assets/cluehelp.png')">
+        <div class="nav-button link" data-url='https://razgals.github.io/Treasure-V2/' data-nav-id="cluehelp" data-title="Clue Help" onclick="addTab('https://razgals.github.io/Treasure-V2/', 'Clue Help', 'assets/cluehelp.png')">
             <img src="assets/cluehelp.png" class="nav-icon">
             <span>Clue Help</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.lostcity.rs/worldmap' data-title="World Map" onclick="addTab('https://2004.lostcity.rs/worldmap', 'World Map', 'assets/worldmap.png')">
+        <div class="nav-button link" data-url='https://2004.lostcity.rs/worldmap' data-nav-id="worldmap" data-title="World Map" onclick="addTab('https://2004.lostcity.rs/worldmap', 'World Map', 'assets/worldmap.png')">
             <img src="assets/worldmap.png" class="nav-icon">
             <span>World Map</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://markets.lostcity.rs' data-title="Markets" onclick="addTab('https://markets.lostcity.rs', 'Markets', 'assets/market.png')">
+        <div class="nav-button link" data-url='https://markets.lostcity.rs' data-nav-id="markets" data-title="Markets" onclick="addTab('https://markets.lostcity.rs', 'Markets', 'assets/market.png')">
             <img src="assets/market.png" class="nav-icon">
             <span>Markets</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=questguides' data-title="Quest Guides" onclick="addTab('https://2004.losthq.rs/?p=questguides', 'Quest Guides', 'assets/quests.png')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=questguides' data-nav-id="questguides" data-title="Quest Guides" onclick="addTab('https://2004.losthq.rs/?p=questguides', 'Quest Guides', 'assets/quests.png')">
             <img src="assets/quests.png" class="nav-icon">
             <span>Quest Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=skillguides' data-title="Skill Guides" onclick="addTab('https://2004.losthq.rs/?p=skillguides', 'Skill Guides', 'assets/skillsguides.png')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=skillguides' data-nav-id="skillguides" data-title="Skill Guides" onclick="addTab('https://2004.losthq.rs/?p=skillguides', 'Skill Guides', 'assets/skillsguides.png')">
             <img src="assets/skillsguides.png" class="nav-icon">
             <span>Skill Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=calculators' data-title="Skills Calculator" onclick="addTab('https://2004.losthq.rs/?p=calculators', 'Skills Calculator', 'assets/skillscalculator.png')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=calculators' data-nav-id="skillscalculator" data-title="Skills Calculator" onclick="addTab('https://2004.losthq.rs/?p=calculators', 'Skills Calculator', 'assets/skillscalculator.png')">
             <img src="assets/skillscalculator.png" class="nav-icon">
             <span>Skills Calculator</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=droptables' data-title="Bestiary" onclick="addTab('https://2004.losthq.rs/?p=droptables', 'Bestiary', 'assets/bestiary.png')">
+        <div class="nav-button link" data-url='https://2004.losthq.rs/?p=droptables' data-nav-id="bestiary" data-title="Bestiary" onclick="addTab('https://2004.losthq.rs/?p=droptables', 'Bestiary', 'assets/bestiary.png')">
             <img src="assets/bestiary.png" class="nav-icon">
             <span>Bestiary</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs', 'assets/lcl.png')">
+        <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-nav-id="lostcitylabs" data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs', 'assets/lcl.png')">
             <img src="assets/lcl.png" class="nav-icon">
             <span>Lost City Labs</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
@@ -107,6 +111,22 @@
         ipcRenderer.on('nav-panel-collapsed', (event, collapsed) => {
             const icon = document.getElementById('nav-toggle-icon');
             if (icon) icon.textContent = collapsed ? '⮜' : '⮞';
+        });
+
+        function applyNavVisibility(hiddenIds) {
+            document.querySelectorAll('[data-nav-id]').forEach(el => {
+                el.style.display = hiddenIds.includes(el.getAttribute('data-nav-id')) ? 'none' : '';
+            });
+        }
+
+        // Apply visibility on load
+        ipcRenderer.invoke('get-hidden-nav-buttons').then(hiddenIds => {
+            if (hiddenIds && hiddenIds.length) applyNavVisibility(hiddenIds);
+        }).catch(() => {});
+
+        // React to live updates from settings
+        ipcRenderer.on('update-nav-visibility', (event, hiddenIds) => {
+            applyNavVisibility(hiddenIds);
         });
     </script>
 </body>

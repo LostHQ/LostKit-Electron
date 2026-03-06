@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" type="text/css" href="main.css" />
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #1a1a1a;
+      color: #f0e68c;
+      font-family: 'RS-Plain', sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Fixed top ── */
+    .yt-top {
+      flex: 0 0 auto;
+      padding: 8px 8px 4px;
+      border-bottom: 1px solid #8b6914;
+      background: #1a1a1a;
+    }
+    .yt-header {
+      display: flex; align-items: center; gap: 4px; margin-bottom: 6px;
+    }
+    .yt-header-title {
+      font-family: 'RS-Bold', sans-serif; font-size: 14px;
+      color: #f0e68c; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); flex: 1;
+    }
+    .yt-icon-btn {
+      background: url('assets/button.jpg') repeat; background-size: cover;
+      border: 2px outset #8b6914; border-radius: 4px; color: #f0e68c;
+      font-size: 13px; cursor: pointer; width: 26px; height: 26px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.1s; flex-shrink: 0;
+    }
+    .yt-icon-btn:hover { border: 2px inset #8b6914; transform: translateY(1px); }
+    .yt-icon-btn.spinning { animation: spin 1s linear infinite; }
+    @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+    .yt-add-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .yt-add-row input {
+      flex: 1; padding: 5px 8px; border-radius: 4px;
+      border: 1px solid #8b6914; background: #2a2a2a; color: #f0e68c;
+      font-family: 'RS-Plain', sans-serif; font-size: 12px; min-width: 0;
+    }
+    .yt-add-row input::placeholder { color: #888; }
+    .yt-add-row input:focus { outline: none; border-color: #c8941c; }
+    .yt-add-btn {
+      background: url('assets/button.jpg') repeat; background-size: cover;
+      border: 2px outset #8b6914; border-radius: 4px; color: #f0e68c;
+      font-family: 'RS-Bold', sans-serif; font-size: 12px; cursor: pointer;
+      padding: 0 10px; white-space: nowrap; transition: all 0.1s;
+    }
+    .yt-add-btn:hover { border: 2px inset #8b6914; transform: translateY(1px); }
+    .yt-hint { font-size: 10px; color: #666; padding: 0 2px 2px; }
+
+    /* ── Channels container — flex column, slots push each other ── */
+    #channels-container {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* 
+      Each slot:
+      - collapsed → flex: 0 0 auto  (shrinks to header height only)
+      - expanded  → flex: 1 1 0     (takes available space)
+      Multiple expanded slots share remaining space equally.
+    */
+    .yt-slot {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-bottom: 1px solid #2a2a2a;
+      transition: flex 0.2s ease;
+    }
+    .yt-slot:last-child { border-bottom: none; }
+    .yt-slot.expanded  { flex: 1 1 0; }
+    .yt-slot.collapsed { flex: 0 0 auto; }
+
+    /* ── Channel header — click to collapse/expand ── */
+    .yt-channel-header {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px;
+      background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+      cursor: pointer; user-select: none;
+      border-left: 4px solid transparent; /* status colour here */
+      transition: border-color 0.3s;
+    }
+    .yt-channel-header:hover { background: linear-gradient(135deg, #333, #252525); }
+
+    /* Status border colours */
+    .yt-channel-header.status-live    { border-left-color: #2ecc40; }
+    .yt-channel-header.status-offline { border-left-color: #cc2222; }
+
+    .yt-channel-avatar-placeholder {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1px solid #8b6914;
+      background: linear-gradient(135deg, #8b6914, #5a4500);
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-family: 'RS-Bold', sans-serif; color: #f0e68c;
+    }
+    .yt-channel-avatar-img {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 1px solid #8b6914; flex-shrink: 0; object-fit: cover;
+    }
+    .yt-channel-info { flex: 1; min-width: 0; }
+    .yt-channel-name {
+      font-family: 'RS-Bold', sans-serif; font-size: 13px; color: #fff;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .yt-live-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-family: 'RS-Bold', sans-serif; margin-top: 2px;
+    }
+    .yt-live-badge.live    { color: #2ecc40; }
+    .yt-live-badge.offline { color: #888; }
+    .yt-live-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .live    .yt-live-dot { background: #2ecc40; animation: livepulse 1.2s ease-in-out infinite; }
+    .offline .yt-live-dot { background: #555; }
+    @keyframes livepulse {
+      0%,100% { opacity:1; box-shadow:0 0 0 0 rgba(46,204,64,0.5); }
+      50%      { opacity:0.7; box-shadow:0 0 0 4px rgba(46,204,64,0); }
+    }
+
+    .yt-header-btns { display: flex; gap: 4px; flex-shrink: 0; }
+    .yt-sm-btn {
+      background: url('assets/button.jpg') repeat; background-size: cover;
+      border: 2px outset #8b6914; border-radius: 3px; color: #f0e68c;
+      font-family: 'RS-Plain', sans-serif; font-size: 10px; cursor: pointer;
+      padding: 3px 7px; transition: all 0.1s; white-space: nowrap;
+    }
+    .yt-sm-btn:hover  { border: 2px inset #8b6914; transform: translateY(1px); }
+    .yt-sm-btn:active { transform: translateY(2px); }
+    .yt-sm-btn.del { background: linear-gradient(135deg,#4a2020,#2a0000); border-color:#882222; color:#ff9999; }
+    .yt-sm-btn.del:hover { background: linear-gradient(135deg,#662222,#400000); }
+
+    .yt-chevron {
+      flex-shrink: 0; color: #888; font-size: 10px;
+      transition: transform 0.2s; pointer-events: none;
+    }
+    .expanded  .yt-chevron { transform: rotate(0deg); }
+    .collapsed .yt-chevron { transform: rotate(-90deg); }
+
+    /* ── Scrollable body ── */
+    .yt-channel-body {
+      flex: 1 1 0; min-height: 0;
+      overflow-y: auto; overflow-x: hidden;
+      scrollbar-width: none; -ms-overflow-style: none;
+    }
+    .yt-channel-body::-webkit-scrollbar { display: none; }
+    .yt-slot.collapsed .yt-channel-body { display: none; }
+
+    /* ── Live section ── */
+    .yt-live-section { padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+    .yt-live-thumb {
+      position: relative; width: 100%; aspect-ratio: 16/9;
+      border-radius: 4px; overflow: hidden; background: #111; cursor: pointer; margin-bottom: 6px;
+    }
+    .yt-live-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+    .yt-live-thumb-overlay {
+      position:absolute; inset:0; background:rgba(0,0,0,0.35);
+      display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.2s;
+    }
+    .yt-live-thumb:hover .yt-live-thumb-overlay { opacity:1; }
+    .yt-play-icon {
+      width:44px; height:44px; background:rgba(255,0,0,0.85);
+      border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px;
+    }
+    .yt-live-label {
+      position:absolute; top:6px; left:6px; background:#ff0000; color:#fff;
+      font-family:'RS-Bold',sans-serif; font-size:10px; padding:2px 6px; border-radius:3px;
+    }
+    .yt-live-title {
+      font-size:11px; color:#f0e68c; line-height:1.3;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    }
+    .yt-live-btn-row { display:flex; gap:4px; margin-top:6px; }
+    .yt-live-btn-row .yt-sm-btn { flex:1; text-align:center; font-size:11px; padding:5px 4px; }
+    .yt-sm-btn.live-btn { background:linear-gradient(135deg,#1a5a1a,#0a3a0a); border-color:#2ecc40; color:#fff; }
+    .yt-sm-btn.live-btn:hover { background:linear-gradient(135deg,#247a24,#0e520e); }
+
+    /* ── Videos ── */
+    .yt-videos-section { padding: 6px 10px 8px; }
+    .yt-section-label {
+      font-size:10px; color:#8b6914; font-family:'RS-Bold',sans-serif;
+      text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+    }
+    .yt-video-item {
+      display:flex; gap:8px; padding:5px 0;
+      border-bottom:1px solid #2a2a2a; cursor:pointer;
+      transition:background 0.1s; border-radius:3px;
+    }
+    .yt-video-item:last-child { border-bottom:none; }
+    .yt-video-item:hover { background:rgba(139,105,20,0.1); }
+    .yt-video-thumb {
+      width:72px; height:40px; border-radius:3px; object-fit:cover;
+      flex-shrink:0; background:#111; border:1px solid #333;
+    }
+    .yt-video-info { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; }
+    .yt-video-title {
+      font-size:11px; color:#f0e68c;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+      overflow:hidden; line-height:1.3;
+    }
+    .yt-video-date { font-size:10px; color:#888; margin-top:3px; }
+
+    /* ── Empty / status ── */
+    .yt-empty { text-align:center; padding:20px 12px; color:#666; font-size:12px; line-height:1.6; }
+    .yt-empty-icon { font-size:28px; display:block; margin-bottom:8px; }
+    .yt-status-bar {
+      flex: 0 0 auto; font-size:10px; color:#555; text-align:center;
+      padding:3px; border-top:1px solid #2a2a2a; background:#1a1a1a;
+    }
+  </style>
+</head>
+<body>
+
+<div class="yt-top">
+  <div class="yt-header">
+    <button class="yt-icon-btn" onclick="goBackToNav()" style="background:transparent;border-color:#555;color:#aaa;">&#8592;</button>
+    <span class="yt-header-title" style="text-align:center;">Creators</span>
+    <button class="yt-icon-btn" id="refresh-btn" title="Refresh all" onclick="refreshAll()">↻</button>
+  </div>
+  <div class="yt-add-row">
+    <input type="text" id="channel-input" placeholder="Channel ID (UCxxxxxx...)" />
+    <button class="yt-add-btn" onclick="addChannel()">+ Add</button>
+  </div>
+  <div class="yt-hint">Only Channel ID (UC...) is supported. Find it under Share Channel on YouTube.</div>
+</div>
+
+<div id="channels-container"></div>
+<div class="yt-status-bar" id="status-bar">Not yet refreshed</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+function goBackToNav() { ipcRenderer.send('switch-nav-view', 'nav'); }
+
+// ── State ─────────────────────────────────────────────────────────────────
+let channels = [];
+let collapsed = {};
+let pollTimer = null;
+const POLL_INTERVAL     = 30 * 1000; // matches bg polling default
+// Live detection now uses /channel/{id}/live URL check — no RSS time heuristic needed
+
+try {
+  const saved = localStorage.getItem('yt-creators-v2');
+  if (saved) { const d = JSON.parse(saved); channels = d.channels||[]; collapsed = d.collapsed||{}; }
+} catch(e) {}
+
+function save() {
+  try { localStorage.setItem('yt-creators-v2', JSON.stringify({ channels, collapsed })); } catch(e) {}
+  ipcRenderer.send('update-creator-channels', channels);
+}
+
+// ── Channel resolution ─────────────────────────────────────────────────────
+async function resolveChannelId(input) {
+  input = input.trim().replace(/\/$/, '');
+  if (/^UC[\w-]{20,}$/.test(input)) return { channelId: input };
+  const cm = input.match(/youtube\.com\/channel\/(UC[\w-]+)/);
+  if (cm) return { channelId: cm[1] };
+  let handle = null;
+  const hm = input.match(/youtube\.com\/@([\w.-]+)/);
+  if (hm) handle = hm[1];
+  else if (input.startsWith('@')) handle = input.slice(1);
+  if (!handle) throw new Error('Use Channel ID (UC...), channel URL, or @handle');
+  try {
+    const html = await ipcRenderer.invoke('fetch-url-for-channel-id', `https://www.youtube.com/@${handle}`);
+    if (html) { const m = html.match(/"channelId":"(UC[\w-]+)"/); if (m) return { channelId: m[1] }; }
+  } catch(e) {}
+  throw new Error(`Could not resolve @${handle} — try the Channel ID directly`);
+}
+
+// ── Live URL check (via main process — avoids CORS) ───────────────────────
+// Much more reliable than RSS heuristics, works for 24/7 streams
+async function checkLiveUrl(channelId) {
+  try {
+    const html = await ipcRenderer.invoke('fetch-url-for-channel-id',
+      `https://www.youtube.com/channel/${channelId}/live`);
+    if (!html) return { isLive: false, liveVideoId: null };
+
+    // Signal 1: canonical URL contains watch?v= (URL redirected to a live video)
+    const canonMatch = html.match(/<link rel="canonical" href="[^"]*[?&]v=([\w-]{11})"/);
+    if (canonMatch) return { isLive: true, liveVideoId: canonMatch[1] };
+
+    // Signal 2: og:url contains watch?v=
+    const ogMatch = html.match(/<meta property="og:url" content="[^"]*[?&]v=([\w-]{11})"/);
+    if (ogMatch) return { isLive: true, liveVideoId: ogMatch[1] };
+
+    // Signal 3: isLiveNow:true in page JSON
+    const liveNow = html.match(/"isLiveNow"\s*:\s*true/);
+    if (liveNow) {
+      const vidMatch = html.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      if (vidMatch) return { isLive: true, liveVideoId: vidMatch[1] };
+    }
+
+    // Signal 4: isLive:true in liveBroadcastDetails
+    const bcast = html.match(/"liveBroadcastDetails"\s*:\s*\{[^}]*"isLiveNow"\s*:\s*true[^}]*"startTimestamp"/);
+    if (bcast) {
+      const vidMatch = html.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      if (vidMatch) return { isLive: true, liveVideoId: vidMatch[1] };
+    }
+
+    // Signal 5: hlsManifestUrl present = active HLS stream
+    const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"[^"]+"/);
+    if (hlsMatch) {
+      const vidMatch = html.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      if (vidMatch) return { isLive: true, liveVideoId: vidMatch[1] };
+    }
+
+    return { isLive: false, liveVideoId: null };
+  } catch { return { isLive: false, liveVideoId: null }; }
+}
+
+// ── Channel avatar ────────────────────────────────────────────────────────
+async function fetchChannelAvatar(channelId) {
+  try {
+    const html = await ipcRenderer.invoke('fetch-url-for-channel-id',
+      `https://www.youtube.com/channel/${channelId}`);
+    if (!html) return null;
+    // og:image on the channel home page is always the channel avatar
+    const m = html.match(/<meta property="og:image" content="([^"]+)"/);
+    if (m) return m[1].replace(/&amp;/g, '&');
+    // Fallback: avatar JSON in page data
+    const m2 = html.match(/"avatar":\{"thumbnails":\[.*?"url":"(https:\/\/yt3\.googleusercontent\.com\/[^"]+)"/);
+    if (m2) return m2[1].replace(/\u0026/g, '&');
+    return null;
+  } catch(e) { return null; }
+}
+
+// Silently fetch avatars for channels that are missing one (runs on startup)
+async function backfillAvatars() {
+  const missing = channels.filter(ch => !ch.avatarUrl);
+  if (!missing.length) return;
+  let changed = false;
+  for (const ch of missing) {
+    const url = await fetchChannelAvatar(ch.channelId);
+    if (url) { ch.avatarUrl = url; changed = true; }
+  }
+  if (changed) { save(); render(); }
+}
+
+// ── RSS (video list only — live detection handled separately) ─────────────
+async function fetchChannelData(channelId) {
+  // Run live-URL check and RSS fetch in parallel
+  const [liveResult, rssRes] = await Promise.all([
+    checkLiveUrl(channelId),
+    fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`)
+  ]);
+
+  if (!rssRes.ok) throw new Error(`RSS ${rssRes.status}`);
+  const doc = new DOMParser().parseFromString(await rssRes.text(), 'text/xml');
+  const channelName = doc.querySelector('author name')?.textContent || 'Unknown';
+  const entries = Array.from(doc.querySelectorAll('entry')).map(e => ({
+    videoId:   e.querySelector('videoId')?.textContent,
+    title:     e.querySelector('title')?.textContent || '',
+    published: e.querySelector('published')?.textContent,
+    updated:   e.querySelector('updated')?.textContent,
+    thumbnail: e.querySelector('thumbnail')?.getAttribute('url') || null
+  }));
+
+  let { isLive, liveVideoId } = liveResult;
+  let liveTitle = null, liveThumbnail = null;
+
+  if (isLive && liveVideoId) {
+    // Try to get title/thumbnail from RSS entries
+    const le = entries.find(e => e.videoId === liveVideoId);
+    liveTitle     = le?.title     || null;
+    liveThumbnail = le?.thumbnail || `https://img.youtube.com/vi/${liveVideoId}/mqdefault.jpg`;
+  }
+
+  return { channelName, entries, isLive, liveVideoId, liveTitle, liveThumbnail };
+}
+
+// ── Add ────────────────────────────────────────────────────────────────────
+async function addChannel() {
+  const input = document.getElementById('channel-input');
+  const val = input.value.trim(); if (!val) return;
+  const btn = document.querySelector('.yt-add-btn');
+  btn.textContent = '...'; btn.disabled = true;
+  try {
+    const { channelId } = await resolveChannelId(val);
+    if (channels.find(c => c.channelId === channelId)) { alert('Already added!'); return; }
+    const [data, avatarUrl] = await Promise.all([fetchChannelData(channelId), fetchChannelAvatar(channelId)]);
+    channels.push({ channelId, name: data.channelName, entries: data.entries,
+      isLive: data.isLive, liveVideoId: data.liveVideoId, liveTitle: data.liveTitle,
+      liveThumbnail: data.liveThumbnail, avatarUrl: avatarUrl || null,
+      lastChecked: Date.now(), error: null });
+    save(); input.value = ''; render();
+  } catch(e) { alert('Error: ' + e.message); }
+  finally { btn.textContent = '+ Add'; btn.disabled = false; }
+}
+document.getElementById('channel-input').addEventListener('keydown', e => { if (e.key==='Enter') addChannel(); });
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+function deleteChannel(id) {
+  channels = channels.filter(c => c.channelId !== id);
+  delete collapsed[id]; save(); render();
+}
+
+// ── Collapse — no re-render, just toggle classes ───────────────────────────
+function toggleCollapse(id) {
+  collapsed[id] = !collapsed[id]; save();
+  const slot = document.querySelector(`.yt-slot[data-ch="${id}"]`);
+  const chev = document.querySelector(`.yt-chevron[data-ch="${id}"]`);
+  if (slot) { slot.classList.toggle('expanded', !collapsed[id]); slot.classList.toggle('collapsed', !!collapsed[id]); }
+  if (chev) chev.textContent = collapsed[id] ? '▶' : '▼';
+}
+
+// ── Refresh ────────────────────────────────────────────────────────────────
+async function refreshChannel(ch) {
+  try {
+    const data = await fetchChannelData(ch.channelId);
+    const wasLive = ch.isLive, prevId = ch.entries?.[0]?.videoId;
+
+    // Grace period: if channel was live but check returned offline,
+    // require 3 consecutive misses before flipping — guards flaky /live URL
+    // checks on very long streams (e.g. 24/7 channels like Lo-fi Girl)
+    let resolvedIsLive = data.isLive;
+    let resolvedVideoId = data.liveVideoId;
+    if (wasLive && !data.isLive) {
+      ch.offlineStrikes = (ch.offlineStrikes || 0) + 1;
+      if (ch.offlineStrikes < 3) {
+        resolvedIsLive = true;           // keep showing as live this cycle
+        resolvedVideoId = ch.liveVideoId; // preserve known video ID
+      } else {
+        ch.offlineStrikes = 0;
+      }
+    } else {
+      ch.offlineStrikes = 0;
+    }
+
+    Object.assign(ch, { name: data.channelName, entries: data.entries,
+      isLive: resolvedIsLive, liveVideoId: resolvedVideoId,
+      liveTitle: resolvedIsLive ? (data.liveTitle || ch.liveTitle) : null,
+      liveThumbnail: resolvedIsLive ? (data.liveThumbnail || ch.liveThumbnail) : null,
+      avatarUrl: ch.avatarUrl || null,
+      lastChecked: Date.now(), error: null });
+    // Fetch avatar in background if still missing
+    if (!ch.avatarUrl) {
+      fetchChannelAvatar(ch.channelId).then(url => {
+        if (url) { ch.avatarUrl = url; save(); render(); }
+      });
+    }
+    if (!wasLive && resolvedIsLive) {
+      ch.lastNotifiedLiveId = resolvedVideoId; // prevent bg poll duplicate
+      ipcRenderer.send('show-notification', { title: `🔴 ${ch.name} is LIVE!`, body: ch.liveTitle||'', videoId: resolvedVideoId });
+    } else if (data.entries[0]?.videoId !== prevId && prevId && !resolvedIsLive) {
+      ch.lastNotifiedVideoId = data.entries[0].videoId; // prevent bg poll duplicate
+      ipcRenderer.send('show-notification', { title: `📹 New video: ${ch.name}`, body: data.entries[0].title, videoId: data.entries[0].videoId });
+    }
+  } catch(e) { ch.error = e.message; ch.lastChecked = Date.now(); }
+}
+
+async function refreshAll() {
+  if (!channels.length) return;
+  document.getElementById('refresh-btn').classList.add('spinning');
+  setStatus('Refreshing...');
+  await Promise.allSettled(channels.map(refreshChannel));
+  save(); render();
+  document.getElementById('refresh-btn').classList.remove('spinning');
+  setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
+}
+
+async function refreshSingle(id) {
+  const ch = channels.find(c => c.channelId === id); if (!ch) return;
+  await refreshChannel(ch); save(); render();
+  setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
+}
+
+// ── Open ───────────────────────────────────────────────────────────────────
+function openStream(videoId, isLive, title) {
+  ipcRenderer.send('open-youtube-stream', { videoId, title: title || '', mode:'stream', isLive:!!isLive });
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function timeAgo(d) {
+  if (!d) return '—';
+  const m = Math.floor((Date.now()-new Date(d))/60000);
+  if (m<1) return 'just now'; if (m<60) return `${m}m ago`;
+  const h=Math.floor(m/60); if (h<24) return `${h}h ago`;
+  const days=Math.floor(h/24); if (days<30) return `${days}d ago`;
+  return `${Math.floor(days/30)}mo ago`;
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function setStatus(msg) { document.getElementById('status-bar').textContent = msg; }
+
+// ── Render a single channel slot ───────────────────────────────────────────
+function renderSlot(ch) {
+  const isCollapsed = !!collapsed[ch.channelId];
+  const initials = (ch.name||'?').charAt(0).toUpperCase();
+
+  // Status badge + border class
+  let badgeHtml = '', statusClass = '';
+  if (ch.isLive) {
+    statusClass = 'status-live';
+    badgeHtml = `<div class="yt-live-badge live"><div class="yt-live-dot"></div>LIVE NOW</div>`;
+  } else {
+    statusClass = 'status-offline';
+    const when = ch.entries?.[0] ? timeAgo(ch.entries[0].published) : '—';
+    badgeHtml = `<div class="yt-live-badge offline"><div class="yt-live-dot"></div>Offline · ${when}</div>`;
+  }
+
+  // Live section
+  let liveHtml = '';
+  if (ch.isLive && ch.liveVideoId) {
+    const thumb = ch.liveThumbnail || `https://img.youtube.com/vi/${ch.liveVideoId}/mqdefault.jpg`;
+    liveHtml = `
+      <div class="yt-live-section">
+        <div class="yt-live-thumb" onclick="openStream('${ch.liveVideoId}',true,this.dataset.t)" data-t="${(ch.liveTitle||'Live Stream').replace(/"/g,'&quot;')}">
+          <img src="${thumb}" onerror="this.src=''" />
+          <div class="yt-live-thumb-overlay"><div class="yt-play-icon">▶</div></div>
+          <div class="yt-live-label">● LIVE</div>
+        </div>
+        <div class="yt-live-title">${esc(ch.liveTitle||'Live Stream')}</div>
+        <div class="yt-live-btn-row">
+          <button class="yt-sm-btn live-btn" onclick="openStream('${ch.liveVideoId}',true,this.dataset.t)" data-t="${(ch.liveTitle||'Live Stream').replace(/"/g,'&quot;')}">▶ Watch Live</button>
+        </div>
+      </div>`;
+  }
+
+  // ALL videos (no slice limit)
+  const videos = (ch.entries||[]).filter(v => !ch.isLive || v.videoId !== ch.liveVideoId);
+  let videosHtml = '';
+  if (videos.length) {
+    const items = videos.map(v => `
+      <div class="yt-video-item" onclick="openStream('${v.videoId}',false,this.dataset.t)" data-t="${(v.title||'').replace(/"/g,'&quot;')}">
+        <img class="yt-video-thumb"
+          src="${v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}"
+          onerror="this.style.background='#222'" />
+        <div class="yt-video-info">
+          <div class="yt-video-title">${esc(v.title)}</div>
+          <div class="yt-video-date">${timeAgo(v.published)}</div>
+        </div>
+      </div>`).join('');
+    videosHtml = `<div class="yt-videos-section"><div class="yt-section-label">Latest Videos</div>${items}</div>`;
+  }
+
+  return `
+    <div class="yt-slot ${isCollapsed?'collapsed':'expanded'}" data-ch="${ch.channelId}">
+      <div class="yt-channel-header ${statusClass}" onclick="toggleCollapse('${ch.channelId}')">
+        ${ch.avatarUrl
+          ? `<img class="yt-channel-avatar-img" src="${ch.avatarUrl}" alt=""
+               onerror="this.style.display='none';this.insertAdjacentHTML('afterend',\`<div class='yt-channel-avatar-placeholder'>${initials}</div>\`)">`
+          : `<div class="yt-channel-avatar-placeholder">${initials}</div>`}
+        <div class="yt-channel-info">
+          <div class="yt-channel-name">${esc(ch.name)}</div>
+          ${badgeHtml}
+        </div>
+        <div class="yt-header-btns" onclick="event.stopPropagation()">
+          <button class="yt-sm-btn" onclick="refreshSingle('${ch.channelId}')">↻</button>
+          <button class="yt-sm-btn del" onclick="deleteChannel('${ch.channelId}')">✕</button>
+        </div>
+        <span class="yt-chevron" data-ch="${ch.channelId}">${isCollapsed?'▶':'▼'}</span>
+      </div>
+      <div class="yt-channel-body">
+        ${liveHtml}
+        ${videosHtml}
+      </div>
+    </div>`;
+}
+
+// ── Main render ────────────────────────────────────────────────────────────
+function render() {
+  const container = document.getElementById('channels-container');
+  if (!channels.length) {
+    container.innerHTML = `<div class="yt-empty"><span class="yt-empty-icon">📺</span>Add your favourite<br>content creators above</div>`;
+    return;
+  }
+  container.innerHTML = channels.map(renderSlot).join('');
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(refreshAll, POLL_INTERVAL);
+}
+
+// Receive updated channels from background poller
+ipcRenderer.on('creator-channels-updated', (event, updatedChannels) => {
+  channels = updatedChannels;
+  try { localStorage.setItem('yt-creators-v2', JSON.stringify({ channels, collapsed })); } catch(e) {}
+  render();
+  setStatus(`Updated: ${new Date().toLocaleTimeString()}`);
+});
+
+// On load, get authoritative channel state from main process
+ipcRenderer.on('creator-channels-from-main', (event, mainChannels) => {
+  if (mainChannels && mainChannels.length > 0) {
+    // Merge avatarUrls from localStorage into mainChannels — appSettings may not
+    // have them yet (e.g. first run after update, or save timing edge-cases)
+    let localAvatars = {};
+    try {
+      const ls = localStorage.getItem('yt-creators-v2');
+      if (ls) {
+        const d = JSON.parse(ls);
+        (d.channels || []).forEach(c => { if (c.avatarUrl) localAvatars[c.channelId] = c.avatarUrl; });
+      }
+    } catch(e) {}
+    channels = mainChannels.map(ch => ({
+      ...ch,
+      avatarUrl: ch.avatarUrl || localAvatars[ch.channelId] || null
+    }));
+    try { localStorage.setItem('yt-creators-v2', JSON.stringify({ channels, collapsed })); } catch(e) {}
+  }
+  render();
+  startPolling();
+  if (channels.length) {
+    setStatus('Refreshing...');
+    setTimeout(refreshAll, 800);
+    // Backfill any missing avatars in background (covers first-run and new channels)
+    setTimeout(backfillAvatars, 500);
+  } else setStatus('Add a channel to get started');
+});
+
+// Fallback: if main doesn't send channels within 1s, use what we have
+let initDone = false;
+ipcRenderer.once('creator-channels-from-main', () => { initDone = true; });
+setTimeout(() => {
+  if (!initDone) {
+    render();
+    startPolling();
+    if (channels.length) { setTimeout(refreshAll, 1500); setTimeout(backfillAvatars, 500); }
+    else setStatus('Add a channel to get started');
+  }
+}, 1000);
+</script>
+</body>
+</html>

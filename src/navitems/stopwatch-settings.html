@@ -8,210 +8,249 @@
             src: url('../assets/fonts/RuneScape-Quill-8.otf') format('opentype');
         }
 
+        /* ── Base ───────────────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            background: #1a1a1a;
+            background: #141414;
             color: #f0e68c;
             font-family: 'RS-Plain', sans-serif;
-            padding: 16px;
             margin: 0;
+            padding: 0;
+            min-height: 100vh;
         }
 
-        .settings-container {
-            max-width: 400px;
-            margin: 0 auto;
+        /* ── Sticky header ───────────────────────────────────────────────────── */
+        .settings-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: linear-gradient(180deg, #1e1c18 0%, #18160e 100%);
+            border-bottom: 2px solid #8b6914;
+            padding: 14px 20px 0;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.5);
         }
 
         .settings-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #8b6914;
+            font-size: 17px;
+            font-family: 'RS-Bold', sans-serif;
+            color: #f0e68c;
             text-align: center;
+            letter-spacing: 1px;
+            text-shadow: 0 0 12px rgba(139,105,20,0.5), 1px 1px 2px #000;
+            margin-bottom: 12px;
         }
 
+        /* ── Tab bar ─────────────────────────────────────────────────────────── */
+        .tab-bar {
+            display: flex;
+            gap: 2px;
+            margin-bottom: -2px;
+        }
+
+        .tab-btn {
+            padding: 7px 16px 9px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            color: #666;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 12px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+            border-radius: 0;
+            transform: none;
+            letter-spacing: 0.3px;
+        }
+        .tab-btn:hover {
+            color: #c8a84a;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid #5a4510;
+            transform: none;
+        }
+        .tab-btn.active {
+            color: #f0e68c;
+            border-bottom: 3px solid #c8941c;
+            background: transparent;
+            text-shadow: 0 0 8px rgba(200,148,28,0.4);
+        }
+
+        /* ── Scroll area ─────────────────────────────────────────────────────── */
+        .settings-container {
+            max-width: 420px;
+            margin: 0 auto;
+            padding: 18px 16px 24px;
+        }
+
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ── Section cards ───────────────────────────────────────────────────── */
+        .folder-section {
+            background: linear-gradient(180deg, #1e1e1e 0%, #191919 100%);
+            border: 1px solid #3a3220;
+            border-top: 2px solid #5a4510;
+            border-radius: 0 0 6px 6px;
+            padding: 14px 14px 10px;
+            margin-bottom: 14px;
+            box-shadow: inset 0 1px 0 rgba(139,105,20,0.08), 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .section-label {
+            font-family: 'RS-Bold', sans-serif;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: #c8941c;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(139,105,20,0.25);
+        }
+
+        /* ── Rows ────────────────────────────────────────────────────────────── */
         .setting-row {
             display: flex;
             align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
+            gap: 10px;
+            margin-bottom: 10px;
             flex-wrap: wrap;
         }
-
         .setting-row label {
             min-width: 120px;
             font-size: 12px;
+            color: #d4c070;
         }
-
         .setting-row input[type="text"] {
             flex: 1;
-            padding: 6px;
-            background: #2a2a2a;
-            border: 2px solid #8b6914;
+            padding: 5px 8px;
+            background: #111;
+            border: 1px solid #4a3c10;
             border-radius: 3px;
             color: #f0e68c;
             font-family: 'RS-Plain', sans-serif;
             font-size: 11px;
             min-width: 150px;
+            transition: border-color 0.15s;
+        }
+        .setting-row input[type="text"]:focus {
+            outline: none;
+            border-color: #8b6914;
+            background: #161610;
         }
 
+        /* ── Range ───────────────────────────────────────────────────────────── */
         .range-wrapper {
             display: flex;
             align-items: center;
             gap: 8px;
             flex: 1;
         }
-
         .range-wrapper input[type="range"] {
             flex: 1;
+            accent-color: #8b6914;
         }
-
         .range-value {
-            min-width: 50px;
+            min-width: 44px;
             text-align: right;
             font-size: 12px;
+            color: #4CAF50;
+            font-family: 'RS-Bold', sans-serif;
         }
 
+        /* ── Checkbox toggle ─────────────────────────────────────────────────── */
         .sound-checkbox-label {
             display: flex;
             align-items: center;
             gap: 8px;
             cursor: pointer;
             font-size: 12px;
-            color: #f0e68c;
+            color: #d4c070;
             flex: 1;
+            user-select: none;
         }
-
-        .sound-checkbox-label input[type="checkbox"] {
-            display: none;
-        }
-
+        .sound-checkbox-label input[type="checkbox"] { display: none; }
         .sound-checkmark {
             width: 16px;
             height: 16px;
-            border: 2px solid #8b6914;
+            border: 1px solid #5a4510;
             border-radius: 3px;
-            background: #2a2a2a;
+            background: #111;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            flex-shrink: 0;
+            transition: border-color 0.15s, background 0.15s;
         }
-
+        .sound-checkbox-label:hover .sound-checkmark {
+            border-color: #8b6914;
+        }
         .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark {
-            background: #4a90e2;
-            border-color: #4a90e2;
+            background: #1a3a1a;
+            border-color: #4CAF50;
         }
-
         .sound-checkbox-label input[type="checkbox"]:checked + .sound-checkmark::after {
             content: '✓';
-            color: white;
+            color: #4CAF50;
             font-size: 10px;
+            line-height: 1;
         }
 
+        /* ── Buttons ─────────────────────────────────────────────────────────── */
         button {
-            padding: 8px 16px;
+            padding: 6px 14px;
             background: url('../assets/button.jpg') repeat;
             background-size: cover;
             border: 2px outset #8b6914;
             border-radius: 4px;
             color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
             font-weight: bold;
             font-size: 12px;
             cursor: pointer;
-            transition: all 0.1s ease;
+            transition: transform 0.1s, border 0.1s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
         }
-
         button:hover {
             border: 2px inset #8b6914;
-            background-color: rgba(139, 105, 20, 0.3);
+            background-color: rgba(139,105,20,0.25);
             transform: translateY(1px);
         }
-
         button:active {
             border: 2px inset #8b6914;
             transform: translateY(2px);
         }
 
+        /* ── Status text ─────────────────────────────────────────────────────── */
         .status-text {
             font-size: 11px;
-            color: #888;
-            margin-top: 8px;
+            color: #555;
+            margin-top: 6px;
             text-align: center;
         }
+        .status-text.active { color: #51cf66; }
 
-        .status-text.active {
-            color: #51cf66;
+        /* ── Font option cards (Appearance tab) ──────────────────────────────── */
+        label[id^="font-opt-"] {
+            background: #111 !important;
+            border-color: #333 !important;
         }
-
-        .folder-section {
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 6px;
-            margin-bottom: 16px;
-        }
-
-        .section-label {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 12px;
-            color: #ffd700;
-        }
-
-        /* Tab navigation */
-        .tab-bar {
-            display: flex;
-            border-bottom: 2px solid #8b6914;
-            margin-bottom: 16px;
-        }
-
-        .tab-btn {
-            padding: 8px 18px;
-            background: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            color: #888;
-            font-family: 'RS-Plain', sans-serif;
-            font-size: 13px;
-            cursor: pointer;
-            margin-bottom: -2px;
-            transition: color 0.2s;
-            border-radius: 0;
-            transform: none;
-        }
-
-        .tab-btn:hover {
-            color: #f0e68c;
-            background: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            transform: none;
-        }
-
-        .tab-btn.active {
-            color: #f0e68c;
-            border-bottom: 3px solid #8b6914;
-            background: transparent;
-        }
-
-        .tab-panel {
-            display: none;
-        }
-
-        .tab-panel.active {
-            display: block;
+        label[id^="font-opt-"]:hover {
+            border-color: #5a4510 !important;
         }
     </style>
 </head>
 <body>
-    <div class="settings-container">
-        <div class="settings-title">Settings</div>
-
-        <!-- Tab bar -->
+    <div class="settings-header">
+        <div class="settings-title"><img src="../assets/settings.png" style="width:18px;height:18px;vertical-align:middle;margin-right:7px;margin-bottom:2px;opacity:0.9;">Settings</div>
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('screenshots', this)">Screenshots</button>
             <button class="tab-btn" onclick="switchTab('appearance', this)">Appearance</button>
+            <button class="tab-btn" onclick="switchTab('creators', this)">Creators</button>
         </div>
+    </div>
+    <div class="settings-container">
 
         <!-- Screenshots tab -->
         <div id="tab-screenshots" class="tab-panel active">
@@ -366,7 +405,58 @@
 
                 <div id="font-apply-status" style="margin-top: 10px; font-size: 11px; color: #4CAF50; min-height: 16px;"></div>
             </div>
+
+            <div class="folder-section">
+                <div class="section-label">Navigation Buttons</div>
+                <div style="color:#b8a060;font-size:11px;margin-bottom:12px;line-height:1.5;">
+                    Uncheck buttons to hide them from the sidebar. Hidden buttons are removed and the rest reflow automatically.
+                </div>
+                <div id="nav-buttons-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
         </div><!-- end tab-appearance -->
+
+        <!-- Creators tab -->
+        <div id="tab-creators" class="tab-panel">
+            <div class="folder-section">
+                <div class="section-label">Notifications</div>
+                <div class="setting-row">
+                    <label style="flex:1;">Live stream alerts</label>
+                    <label class="sound-checkbox-label" style="flex:0 0 auto;">
+                        <input type="checkbox" id="notif-live-check" checked>
+                        <span class="sound-checkmark"></span>
+                        <span>Notify when live</span>
+                    </label>
+                </div>
+                <div class="setting-row">
+                    <label style="flex:1;">New video alerts</label>
+                    <label class="sound-checkbox-label" style="flex:0 0 auto;">
+                        <input type="checkbox" id="notif-video-check" checked>
+                        <span class="sound-checkmark"></span>
+                        <span>Notify on new video</span>
+                    </label>
+                </div>
+            </div>
+            <div class="folder-section">
+                <div class="section-label">Background Check Interval</div>
+                <div style="color:#b8a060;font-size:11px;margin-bottom:10px;line-height:1.5;">
+                    How often to check for live streams and new videos in the background.
+                </div>
+                <div class="setting-row">
+                    <label style="flex:1;">Check every</label>
+                    <select id="poll-interval-select" style="background:#2a2a2a;border:2px solid #8b6914;border-radius:3px;color:#f0e68c;font-size:12px;padding:4px 8px;cursor:pointer;">
+                        <option value="10000">10 seconds</option>
+                        <option value="30000">30 seconds</option>
+                        <option value="60000">1 minute</option>
+                        <option value="120000">2 minutes</option>
+                        <option value="300000" selected>5 minutes</option>
+                        <option value="600000">10 minutes</option>
+                        <option value="900000">15 minutes</option>
+                        <option value="1800000">30 minutes</option>
+                    </select>
+                </div>
+                <div class="status-text" id="creators-save-status"></div>
+            </div>
+        </div><!-- end tab-creators -->
 
         <div style="text-align: center; margin-top: 16px;">
             <button onclick="closeWindow()">Close</button>
@@ -657,6 +747,84 @@
             createAdventureFolder = createAdventureFolderCheckbox.checked;
             saveSettings();
         });
+
+        // ── Creators notification settings ───────────────────────────────────────
+        const NAV_BUTTONS = [
+            { id: 'worldswitcher', label: 'Switch World' },
+            { id: 'chat',          label: 'Chat' },
+            { id: 'stopwatch',     label: 'Stopwatch' },
+            { id: 'creators',      label: 'Creators' },
+            { id: 'hiscores',      label: 'Hiscores' },
+            { id: 'notes',         label: 'Notes' },
+            { id: 'forums',        label: 'Forums' },
+            { id: 'coordinates',   label: 'Coordinates' },
+            { id: 'cluehelp',      label: 'Clue Help' },
+            { id: 'worldmap',      label: 'World Map' },
+            { id: 'markets',       label: 'Markets' },
+            { id: 'questguides',   label: 'Quest Guides' },
+            { id: 'skillguides',   label: 'Skill Guides' },
+            { id: 'skillscalculator', label: 'Skills Calculator' },
+            { id: 'bestiary',      label: 'Bestiary' },
+            { id: 'lostcitylabs',  label: 'Lost City Labs' },
+        ];
+
+        let hiddenNavButtons = [];
+
+        function buildNavButtonsList() {
+            const list = document.getElementById('nav-buttons-list');
+            if (!list) return;
+            list.innerHTML = '';
+            NAV_BUTTONS.forEach(btn => {
+                const isVisible = !hiddenNavButtons.includes(btn.id);
+                const row = document.createElement('label');
+                row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:7px 10px;border:2px solid ' + (isVisible ? '#8b6914' : '#444') + ';border-radius:4px;transition:border-color 0.15s;';
+                row.innerHTML = `
+                    <input type="checkbox" ${isVisible ? 'checked' : ''} data-btn-id="${btn.id}"
+                        style="accent-color:#8b6914;width:15px;height:15px;cursor:pointer;">
+                    <span style="font-size:13px;color:#f0e68c;">${btn.label}</span>`;
+                row.querySelector('input').addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        hiddenNavButtons = hiddenNavButtons.filter(id => id !== btn.id);
+                    } else {
+                        if (!hiddenNavButtons.includes(btn.id)) hiddenNavButtons.push(btn.id);
+                    }
+                    row.style.borderColor = e.target.checked ? '#8b6914' : '#444';
+                    ipcRenderer.send('set-hidden-nav-buttons', hiddenNavButtons);
+                });
+                list.appendChild(row);
+            });
+        }
+
+        ipcRenderer.invoke('get-hidden-nav-buttons').then(hidden => {
+            hiddenNavButtons = hidden || [];
+            buildNavButtonsList();
+        }).catch(() => buildNavButtonsList());
+
+        // Creators notif settings
+        function saveCreatorSettings() {
+            const settings = {
+                notifLive: document.getElementById('notif-live-check').checked,
+                notifVideo: document.getElementById('notif-video-check').checked,
+                pollIntervalMs: parseInt(document.getElementById('poll-interval-select').value)
+            };
+            ipcRenderer.send('update-creator-notif-settings', settings);
+            const st = document.getElementById('creators-save-status');
+            if (st) { st.textContent = 'Saved!'; st.className = 'status-text active'; setTimeout(() => { st.textContent = ''; }, 1500); }
+        }
+
+        ipcRenderer.invoke('get-creator-notif-settings').then(s => {
+            if (!s) return;
+            const lc = document.getElementById('notif-live-check');
+            const vc = document.getElementById('notif-video-check');
+            const ps = document.getElementById('poll-interval-select');
+            if (lc) lc.checked = s.notifLive !== false;
+            if (vc) vc.checked = s.notifVideo !== false;
+            if (ps && s.pollIntervalMs) ps.value = String(s.pollIntervalMs);
+        }).catch(() => {});
+
+        document.getElementById('notif-live-check')?.addEventListener('change', saveCreatorSettings);
+        document.getElementById('notif-video-check')?.addEventListener('change', saveCreatorSettings);
+        document.getElementById('poll-interval-select')?.addEventListener('change', saveCreatorSettings);
 
         function closeWindow() {
             window.close();

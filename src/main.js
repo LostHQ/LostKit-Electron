@@ -38,6 +38,8 @@ function snapToZoomStep(factor) {
 const NAV_PANEL_WIDTH = 250;
 let navPanelCollapsed = false;
 let navPanelPrevX = null;
+let chatPrevY     = null;
+let chatAnimTimer = null;
 
 log.transports.file.level = 'info';
 
@@ -90,7 +92,11 @@ let appSettings = {
   soundManagerWindow: { width: 450, height: 500 }, notesWindow: { width: 500, height: 600 },
   screenshotFolder: '', screenshotKeybind: '',
   screenshotSoundEnabled: true, screenshotSoundVolume: 80, screenshotCustomSoundPath: '',
-  appFont: 'quill'
+  appFont: 'quill',
+  creatorChannels: [],
+  creatorNotifSettings: { notifLive: true, notifVideo: true, pollIntervalMs: 30000 },
+  hiddenNavButtons: [],
+  streamWindow: { width: 960, height: 600, x: null, y: null, pinned: false, chatOpen: false, videoHidden: false, prevWinWidth: 960 }
 };
 
 function loadSettings() {
@@ -115,7 +121,171 @@ function saveSettings() {
 
 function saveSettingsDebounced() {
   if (saveSettingsDebounced.timer) clearTimeout(saveSettingsDebounced.timer);
+
   saveSettingsDebounced.timer = setTimeout(saveSettings, 500);
+}
+
+// ── Creators background polling ──────────────────────────────────────────────
+let creatorPollTimer = null;
+let currentNavViewName = 'nav';
+
+async function bgCheckChannelLive(channelId) {
+  try {
+    const res = await fetch(`https://www.youtube.com/channel/${channelId}/live`, {
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept-Language': 'en-US,en;q=0.9' }
+    });
+    const html = await res.text();
+
+    // Signal 1: final URL after redirect contains watch?v=
+    const finalUrlMatch = res.url.match(/[?&]v=([\w-]{11})/);
+    if (finalUrlMatch) return { isLive: true, liveVideoId: finalUrlMatch[1] };
+
+    // Signal 2: canonical URL in page HTML
+    const canonMatch = html.match(/<link rel="canonical" href="[^"]*[?&]v=([\w-]{11})"/);
+    if (canonMatch) return { isLive: true, liveVideoId: canonMatch[1] };
+
+    // Signal 3: og:url in page HTML
+    const ogMatch = html.match(/<meta property="og:url" content="[^"]*[?&]v=([\w-]{11})"/);
+    if (ogMatch) return { isLive: true, liveVideoId: ogMatch[1] };
+
+    // Signal 4: isLiveNow:true in page JSON
+    if (/"isLiveNow"\s*:\s*true/.test(html)) {
+      const vm = html.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      if (vm) return { isLive: true, liveVideoId: vm[1] };
+    }
+
+    // Signal 5: hlsManifestUrl present = active HLS stream
+    if (/"hlsManifestUrl"\s*:\s*"/.test(html)) {
+      const vm = html.match(/"videoId"\s*:\s*"([\w-]{11})"/);
+      if (vm) return { isLive: true, liveVideoId: vm[1] };
+    }
+
+    // Signal 6: legacy isLive:true pattern
+    const legacy = html.match(/"videoId":"([\w-]{11})"[^}]*"isLive"\s*:\s*true/) ||
+                   html.match(/"isLive"\s*:\s*true[^}]*"videoId":"([\w-]{11})"/);
+    if (legacy) return { isLive: true, liveVideoId: legacy[1] };
+
+    return { isLive: false, liveVideoId: null };
+  } catch { return { isLive: false, liveVideoId: null }; }
+}
+
+async function bgFetchRSS(channelId) {
+  try {
+    const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (!res.ok) return null;
+    const xml = await res.text();
+    const entries = [];
+    const entryRe = /<entry>([\s\S]*?)<\/entry>/g;
+    let m;
+    while ((m = entryRe.exec(xml)) !== null) {
+      const e = m[1];
+      const videoId = (e.match(/<yt:videoId>(.*?)<\/yt:videoId>/) || [])[1];
+      const title   = (e.match(/<title>(.*?)<\/title>/)            || [])[1];
+      const pub     = (e.match(/<published>(.*?)<\/published>/)     || [])[1];
+      const upd     = (e.match(/<updated>(.*?)<\/updated>/)         || [])[1];
+      const thumb   = (e.match(/url="(https:\/\/i\.ytimg[^"]+)"/) || [])[1] || null;
+      if (videoId) entries.push({ videoId, title: title||'', published: pub, updated: upd, thumbnail: thumb });
+    }
+    const nm = xml.match(/<author>\s*<name>(.*?)<\/name>/);
+    return { channelName: nm ? nm[1] : 'Unknown', entries };
+  } catch { return null; }
+}
+
+function fireCreatorNotif(title, body, videoId) {
+  const { Notification } = require('electron');
+  if (!Notification.isSupported()) return;
+  const notif = new Notification({ title, body: body || '', silent: false });
+  notif.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+    if (videoId) {
+      const sw = new BrowserWindow({
+        width: 960, height: 600, minWidth: 480, minHeight: 360,
+        title: title || 'Stream', backgroundColor: '#000000',
+        webPreferences: { nodeIntegration: true, contextIsolation: false, webviewTag: true },
+        autoHideMenuBar: true, frame: false,
+      });
+      sw.loadFile(path.join(__dirname, 'youtube-stream.html'), {
+        query: { v: videoId, title: encodeURIComponent(title||''), mode: 'stream', live: '1' }
+      });
+      sw.on('close', () => sw.destroy());
+    }
+  });
+  notif.show();
+}
+
+async function pollCreatorsBackground() {
+  const channels = appSettings.creatorChannels;
+  if (!channels || !channels.length) return;
+  const ns = appSettings.creatorNotifSettings || {};
+  for (const ch of channels) {
+    try {
+      const [liveR, rssR] = await Promise.allSettled([
+        bgCheckChannelLive(ch.channelId), bgFetchRSS(ch.channelId)
+      ]);
+      const wasLive = ch.isLive;
+      const prevTopId = ch.entries?.[0]?.videoId;
+      if (liveR.status === 'fulfilled') {
+        const detected = liveR.value.isLive;
+        if (detected) {
+          // Confirmed live — reset strikes, update state immediately
+          ch.isLive = true;
+          ch.liveVideoId = liveR.value.liveVideoId;
+          ch.offlineStrikes = 0;
+        } else if (wasLive) {
+          // Was live, now check returned offline — require 3 consecutive misses
+          // before actually flipping to offline (guards against flaky /live URL checks
+          // on very long streams like 24/7 channels e.g. Lo-fi Girl)
+          ch.offlineStrikes = (ch.offlineStrikes || 0) + 1;
+          if (ch.offlineStrikes >= 3) {
+            ch.isLive = false;
+            ch.liveVideoId = null;
+          }
+          // else: keep ch.isLive=true and ch.liveVideoId intact for this cycle
+        } else {
+          ch.isLive = false;
+          ch.liveVideoId = liveR.value.liveVideoId;
+          ch.offlineStrikes = 0;
+        }
+      }
+      if (rssR.status === 'fulfilled' && rssR.value) {
+        const rss = rssR.value;
+        ch.name = rss.channelName || ch.name;
+        ch.entries = rss.entries;
+        if (ch.isLive && ch.liveVideoId) {
+          const le = rss.entries.find(e => e.videoId === ch.liveVideoId);
+          ch.liveTitle = le?.title || ch.liveTitle || null;
+          ch.liveThumbnail = le?.thumbnail || ch.liveThumbnail || null;
+        }
+      }
+      if (!wasLive && ch.isLive && ch.liveVideoId &&
+          ch.liveVideoId !== ch.lastNotifiedLiveId && ns.notifLive !== false) {
+        ch.lastNotifiedLiveId = ch.liveVideoId;
+        fireCreatorNotif(`🔴 ${ch.name} is LIVE!`, ch.liveTitle||'', ch.liveVideoId);
+      }
+      const newTopId = ch.entries?.[0]?.videoId;
+      // Exclude video IDs that were already notified as a live stream (stream VOD / live start entry)
+      const alreadyNotifiedAsLive = newTopId && newTopId === ch.lastNotifiedLiveId;
+      if (!ch.isLive && newTopId && newTopId !== prevTopId &&
+          prevTopId && !alreadyNotifiedAsLive &&
+          newTopId !== ch.lastNotifiedVideoId && ns.notifVideo !== false) {
+        ch.lastNotifiedVideoId = newTopId;
+        fireCreatorNotif(`📹 New video: ${ch.name}`, ch.entries[0].title||'', newTopId);
+      }
+      ch.lastChecked = Date.now();
+    } catch(e) { log.warn('Creator bg poll:', ch.channelId, e.message); }
+  }
+  saveSettingsDebounced();
+  if (currentNavViewName === 'youtube' && navView && !navView.webContents.isDestroyed())
+    navView.webContents.send('creator-channels-updated', appSettings.creatorChannels);
+}
+
+function startCreatorPolling() {
+  if (creatorPollTimer) clearInterval(creatorPollTimer);
+  const interval = (appSettings.creatorNotifSettings?.pollIntervalMs) || 300000;
+  creatorPollTimer = setInterval(pollCreatorsBackground, interval);
 }
 
 // ── Font injection ────────────────────────────────────────────────────────────
@@ -387,6 +557,62 @@ function updateBounds() {
   mainWindow.webContents.send('update-resizer', chatHeight);
 }
 
+function animateChatToggle(toVisible) {
+  if (chatAnimTimer) { clearInterval(chatAnimTimer); chatAnimTimer = null; }
+
+  const CHAT_DELTA = chatHeightValue + 3; // panel height + divider
+  const STEPS = 12;
+  const MS    = 14;
+
+  const { screen } = require('electron');
+  const startBounds = mainWindow.getBounds();
+  const display     = screen.getDisplayMatching(startBounds);
+  const workArea    = display.workArea;
+
+  let targetBounds;
+  if (toVisible) {
+    const expandedBottom = startBounds.y + startBounds.height + CHAT_DELTA;
+    let newY = startBounds.y;
+    if (expandedBottom > workArea.y + workArea.height) {
+      chatPrevY = startBounds.y;
+      newY = Math.max(workArea.y, startBounds.y - (expandedBottom - (workArea.y + workArea.height)));
+    } else {
+      chatPrevY = null;
+    }
+    targetBounds = { x: startBounds.x, y: newY, width: startBounds.width, height: startBounds.height + CHAT_DELTA };
+    chatView.setVisible(true);
+  } else {
+    let restoreY = startBounds.y;
+    if (chatPrevY !== null) { restoreY = chatPrevY; chatPrevY = null; }
+    targetBounds = { x: startBounds.x, y: restoreY, width: startBounds.width, height: startBounds.height - CHAT_DELTA };
+  }
+
+  let step = 0;
+  chatAnimTimer = setInterval(() => {
+    step++;
+    const p  = step / STEPS;
+    const ep = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+    const wb = {
+      x:      Math.round(startBounds.x      + (targetBounds.x      - startBounds.x)      * ep),
+      y:      Math.round(startBounds.y      + (targetBounds.y      - startBounds.y)      * ep),
+      width:  Math.round(startBounds.width  + (targetBounds.width  - startBounds.width)  * ep),
+      height: Math.round(startBounds.height + (targetBounds.height - startBounds.height) * ep),
+    };
+    mainWindow.setBounds(wb);
+    updateBounds();
+    if (step >= STEPS) {
+      clearInterval(chatAnimTimer); chatAnimTimer = null;
+      chatVisible = toVisible;
+      if (!toVisible) chatView.setVisible(false);
+      appSettings.chatVisible = toVisible;
+      saveSettingsDebounced();
+      mainWindow.setBounds(targetBounds);
+      updateBounds();
+      mainWindow.webContents.send('chat-toggled', toVisible, chatHeightValue);
+    }
+  }, MS);
+}
+
 function getGameViewAbsoluteBounds() {
   try {
     if (!mainWindow || mainWindow.isDestroyed()) return null;
@@ -415,6 +641,7 @@ function initDefaultPackagedSoundPath() {
 
 app.whenReady().then(() => {
   initDefaultPackagedSoundPath();
+  startCreatorPolling(); // background polling for creators
 
   if (typeof appSettings.navPanelCollapsed === 'boolean') navPanelCollapsed = appSettings.navPanelCollapsed;
 
@@ -668,7 +895,17 @@ app.whenReady().then(() => {
 
   navView = new WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } });
   navView.webContents.loadFile(path.join(__dirname, 'nav.html'));
-  navView.webContents.on('did-finish-load', () => applyFontToView(navView.webContents, true));
+  navView.webContents.on('did-finish-load', () => {
+    applyFontToView(navView.webContents, true);
+    // Send nav visibility whenever nav.html loads
+    if (currentNavViewName === 'nav' && appSettings.hiddenNavButtons?.length) {
+      navView.webContents.send('update-nav-visibility', appSettings.hiddenNavButtons);
+    }
+    // Send channel state when youtube.html loads
+    if (currentNavViewName === 'youtube') {
+      navView.webContents.send('creator-channels-from-main', appSettings.creatorChannels || []);
+    }
+  });
   mainWindow.contentView.addChildView(navView);
   startWorldStatusInterval();
 
@@ -685,6 +922,8 @@ app.whenReady().then(() => {
   const startWorldUrl = tabs[0].url, startWorldTitle = tabs[0].title;
   mainView.webContents.loadURL(startWorldUrl);
   mainView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // Clear history after initial load so back/forward are dead from the start
+  mainView.webContents.once('did-finish-load', () => { try { const wc = mainView.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory(); } catch(e) {} });
   mainWindow.contentView.addChildView(mainView);
   primaryViews.push({ id: 'main', view: mainView });
   if (appSettings.zoomFactor && appSettings.zoomFactor !== 1) mainView.webContents.once('did-finish-load', () => { try { mainView.webContents.setZoomFactor(appSettings.zoomFactor); } catch (e) {} });
@@ -696,7 +935,7 @@ app.whenReady().then(() => {
   mainView.webContents.on('before-input-event', (event, input) => {
     // ── Block accidental navigation shortcuts on the game tab ──────────────
     // Suppress Alt+Left, Alt+Right (back/forward), F5, Ctrl+R (refresh),
-    // Ctrl+Shift+R (hard refresh), Backspace (back), Alt+F4 handled by OS.
+    // Ctrl+Shift+R (hard refresh), browser history shortcuts.
     if (input.type === 'keyDown') {
       const ctrl  = input.control || input.meta;
       const alt   = input.alt;
@@ -704,11 +943,18 @@ app.whenReady().then(() => {
       const key   = input.key;
 
       const isNavigation = (
+        // Browser back / forward (Alt+Arrow)
         (alt && (key === 'ArrowLeft' || key === 'ArrowRight')) ||
+        // Reload shortcuts
         (key === 'F5') ||
-        (ctrl && !shift && key === 'r') ||
-        (ctrl && shift && key === 'r') ||
-        (ctrl && shift && key === 'R')
+        (ctrl && (key === 'r' || key === 'R')) ||
+        (ctrl && key === 'F5') ||
+        (shift && key === 'F5') ||
+        // Dedicated media/browser keys present on many keyboards
+        key === 'BrowserBack'    ||
+        key === 'BrowserForward' ||
+        key === 'BrowserRefresh' ||
+        key === 'BrowserStop'
       );
 
       if (isNavigation) {
@@ -732,6 +978,37 @@ app.whenReady().then(() => {
     if (!afkGameClick || afkInputType !== 'both') return;
     resetGameClickTimer();
     if (navView && navView.webContents) navView.webContents.send('afk-game-click-reset');
+  });
+
+  // ── Block ALL page-initiated navigation on the game view ───────────────────
+  // This covers: clicking links inside the game page, JavaScript window.location
+  // changes, form submits, mouse back/forward button gestures, and any other
+  // renderer-side navigation attempt. The ONLY valid way to load a new world is
+  // through select-world → webContents.loadURL(), which bypasses will-navigate.
+  mainView.webContents.on('will-navigate', (event) => {
+    event.preventDefault();
+    log.info('Blocked page-initiated navigation on game view');
+  });
+
+  // Also block history-state navigations (pushState/replaceState tricks)
+  mainView.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
+    if (isMainFrame) {
+      // If the page somehow changed its own URL via history API, navigate back
+      // to the last known game URL so the game state is not lost.
+      const mainTabData = tabs.find(t => t.id === 'main');
+      const expectedUrl = mainTabData ? mainTabData.url : null;
+      if (expectedUrl && url !== expectedUrl) {
+        log.info('Blocked in-page navigation on game view, restoring:', expectedUrl);
+        mainView.webContents.loadURL(expectedUrl);
+      }
+    }
+  });
+
+  // ── Suppress right-click context menu on the game view ────────────────────
+  // Chromium's default context menu includes Back / Forward / Reload entries.
+  // Blocking it entirely prevents accidental navigation via right-click.
+  mainView.webContents.on('context-menu', (event) => {
+    event.preventDefault();
   });
 
   const saveMainWindowBounds = () => {
@@ -1289,12 +1566,7 @@ app.whenReady().then(() => {
 
   // ── Chat IPC ────────────────────────────────────────────────────────────────
   ipcMain.on('toggle-chat', () => {
-    chatVisible = !chatVisible;
-    chatView.setVisible(chatVisible);
-    appSettings.chatVisible = chatVisible;
-    saveSettingsDebounced();
-    updateBounds();
-    mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+    animateChatToggle(!chatVisible);
   });
 
   // ── Tab IPC ─────────────────────────────────────────────────────────────────
@@ -1346,12 +1618,187 @@ app.whenReady().then(() => {
   });
 
   ipcMain.on('switch-nav-view', (event, view) => {
+    currentNavViewName = view || 'nav';
     switch (view) {
       case 'worldswitcher': navView.webContents.loadFile(path.join(__dirname, '/navitems/worldswitcher.html')); break;
       case 'hiscores':      navView.webContents.loadFile(path.join(__dirname, '/navitems/hiscores.html')); break;
       case 'stopwatch':     navView.webContents.loadFile(path.join(__dirname, '/navitems/stopwatch.html')); break;
+      case 'youtube':       navView.webContents.loadFile(path.join(__dirname, 'youtube.html')); break;
+      case 'nav':           navView.webContents.loadFile(path.join(__dirname, 'nav.html')); break;
       default:              navView.webContents.loadFile(path.join(__dirname, 'nav.html')); break;
     }
+  });
+
+  // ── YouTube / Creators IPC ───────────────────────────────────────────────────
+
+  // Open embedded stream popup window
+  // Open YouTube live chat in its own window (avoids embed domain restrictions)
+  ipcMain.on('open-youtube-chat', (event, { videoId, title }) => {
+    const chatWin = new BrowserWindow({
+      width: 380,
+      height: 650,
+      minWidth: 300,
+      minHeight: 400,
+      title: `Chat - ${title || 'Stream'}`,
+      backgroundColor: '#0f0f0f',
+      webPreferences: { webSecurity: false },
+      autoHideMenuBar: true,
+    });
+    chatWin.loadURL(`https://www.youtube.com/live_chat?v=${videoId}`);
+    chatWin.on('close', () => chatWin.destroy());
+  });
+
+  // Close stream window safely without triggering window-all-closed
+  ipcMain.on('close-stream-window', (event) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) win.close();
+  });
+
+  // Return current stream window bounds (used before collapsing video pane)
+  ipcMain.handle('get-stream-bounds', (event) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+    return (win && !win.isDestroyed()) ? win.getBounds() : null;
+  });
+
+  // Resize stream window for audio-only (hide video) / restore video
+  ipcMain.on('set-stream-video-hidden', (event, { hidden, restoreWidth }) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+    const b = win.getBounds();
+    if (hidden) {
+      win.setMinimumSize(300, 200);
+      win.setBounds({ x: b.x, y: b.y, width: 340, height: b.height });
+      appSettings.streamWindow = { ...(appSettings.streamWindow||{}), videoHidden: true, prevWinWidth: restoreWidth || appSettings.streamWindow?.prevWinWidth || 960 };
+    } else {
+      win.setMinimumSize(480, 360);
+      win.setBounds({ x: b.x, y: b.y, width: restoreWidth || 960, height: b.height });
+      appSettings.streamWindow = { ...(appSettings.streamWindow||{}), videoHidden: false };
+    }
+    saveSettingsDebounced();
+  });
+
+  // Pin stream window above all other windows
+  ipcMain.on('set-stream-always-on-top', (event, val) => {
+    const win = require('electron').BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+      win.setAlwaysOnTop(val, 'screen-saver');
+      if (val) win.moveTop();
+    }
+    appSettings.streamWindow = { ...(appSettings.streamWindow||{}), pinned: val };
+    saveSettingsDebounced();
+  });
+
+  // Save chat open/closed state from stream window
+  ipcMain.on('set-stream-chat-open', (event, val) => {
+    appSettings.streamWindow = { ...(appSettings.streamWindow||{}), chatOpen: val };
+    saveSettingsDebounced();
+  });
+
+  // Provide saved stream prefs to the stream window on load
+  ipcMain.handle('get-stream-prefs', () => appSettings.streamWindow || {});
+
+  ipcMain.on('open-youtube-stream', (event, { videoId, title, mode, isLive, chatOnly }) => {
+    const sw = appSettings.streamWindow || {};
+    const streamWin = new BrowserWindow({
+      width:  chatOnly ? 340 : (sw.width  || 960),
+      height: sw.height || 600,
+      x: sw.x != null ? sw.x : undefined,
+      y: sw.y != null ? sw.y : undefined,
+      minWidth: chatOnly ? 300 : 480,
+      minHeight: 360,
+      title: title || 'Stream',
+      backgroundColor: '#000000',
+      webPreferences: { nodeIntegration: true, contextIsolation: false, webviewTag: true },
+      autoHideMenuBar: true,
+      frame: false,
+    });
+    // Restore always-on-top if it was pinned
+    if (sw.pinned) {
+      streamWin.setAlwaysOnTop(true, 'screen-saver');
+    }
+    const encodedTitle = encodeURIComponent(title || '');
+    streamWin.loadFile(path.join(__dirname, 'youtube-stream.html'), {
+      query: { v: videoId, title: encodedTitle, mode: mode || 'stream', live: isLive ? '1' : '0', chatOnly: chatOnly ? '1' : '0' }
+    });
+    // Save bounds on move/resize
+    const saveStreamBounds = () => {
+      if (streamWin && !streamWin.isDestroyed() && !streamWin.isMinimized()) {
+        const b = streamWin.getBounds();
+        appSettings.streamWindow = { ...(appSettings.streamWindow||{}), width: b.width, height: b.height, x: b.x, y: b.y };
+        saveSettingsDebounced();
+      }
+    };
+    streamWin.on('resize', saveStreamBounds);
+    streamWin.on('move',   saveStreamBounds);
+    // Prevent stream window close from triggering window-all-closed → app.quit()
+    streamWin.on('close', () => {
+      saveStreamBounds();
+      streamWin.destroy();
+    });
+  });
+
+  // Fetch a URL from main process (used for @handle → channel ID resolution fallback)
+  ipcMain.handle('fetch-url-for-channel-id', async (event, url) => {
+    try {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LostKit)' }
+      });
+      if (!response.ok) return null;
+      return await response.text();
+    } catch (e) {
+      log.warn('fetch-url-for-channel-id failed:', e.message);
+      return null;
+    }
+  });
+
+  // Desktop notification when a creator goes live or posts a new video
+  ipcMain.on('show-notification', (event, { title, body, videoId }) => {
+    const { Notification } = require('electron');
+    if (!Notification.isSupported()) return;
+    const notif = new Notification({ title, body, silent: false });
+    notif.on('click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus();
+      if (videoId) {
+        const streamWin = new BrowserWindow({
+          width: 960, height: 600, minWidth: 480, minHeight: 360,
+          title: title || 'Stream',
+          backgroundColor: '#000000',
+          webPreferences: { nodeIntegration: true, contextIsolation: false },
+          autoHideMenuBar: true,
+          frame: false,
+        });
+        streamWin.loadFile(path.join(__dirname, 'youtube-stream.html'), {
+          query: { v: videoId, title: encodeURIComponent(title || ''), mode: 'both' }
+        });
+      }
+    });
+    notif.show();
+  });
+
+  // ── Creators channel sync ─────────────────────────────────────────────────
+  ipcMain.handle('get-creator-channels', () => appSettings.creatorChannels || []);
+  ipcMain.on('update-creator-channels', (event, channels) => {
+    appSettings.creatorChannels = channels;
+    saveSettingsDebounced();
+  });
+
+  // ── Creator notification settings ─────────────────────────────────────────
+  ipcMain.handle('get-creator-notif-settings', () =>
+    appSettings.creatorNotifSettings || { notifLive: true, notifVideo: true, pollIntervalMs: 300000 }
+  );
+  ipcMain.on('update-creator-notif-settings', (event, settings) => {
+    appSettings.creatorNotifSettings = { ...(appSettings.creatorNotifSettings||{}), ...settings };
+    saveSettingsDebounced();
+    startCreatorPolling(); // restart with new interval
+  });
+
+  // ── Nav button visibility ─────────────────────────────────────────────────
+  ipcMain.handle('get-hidden-nav-buttons', () => appSettings.hiddenNavButtons || []);
+  ipcMain.on('set-hidden-nav-buttons', (event, hiddenIds) => {
+    appSettings.hiddenNavButtons = hiddenIds;
+    saveSettingsDebounced();
+    if (navView && !navView.webContents.isDestroyed())
+      navView.webContents.send('update-nav-visibility', hiddenIds);
   });
 
   ipcMain.on('select-world', (event, url, title) => {
@@ -1365,7 +1812,11 @@ app.whenReady().then(() => {
       tabByUrl.delete(currentTabData.url);
       currentTabData.url = url; currentTabData.title = title; tabByUrl.set(url, currentTab);
       const cv = primaryViews.find(pv => pv.id === currentTab);
-      if (cv) cv.view.webContents.loadURL(url);
+      if (cv) {
+        cv.view.webContents.loadURL(url);
+        // Clear navigation history so back/forward buttons/gestures lead nowhere
+        const wc = cv.view.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory();
+      }
       if (currentTab === 'main') { appSettings.lastWorld = { url, title }; saveSettingsDebounced(); }
       mainWindow.webContents.send('update-tab-title', currentTab, title);
       ipcMain.emit('switch-nav-view', null, 'nav');
