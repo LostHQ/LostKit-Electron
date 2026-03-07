@@ -990,16 +990,17 @@ app.whenReady().then(() => {
     log.info('Blocked page-initiated navigation on game view');
   });
 
-  // Also block history-state navigations (pushState/replaceState tricks)
+  // Track history-state navigations (pushState/replaceState) — e.g. fullscreen toggle.
+  // We intentionally do NOT reload here: did-navigate-in-page never unloads the page,
+  // so there is nothing to "restore". Calling loadURL() here was causing a full page
+  // reload whenever the game's fullscreen button fired a pushState URL change.
+  // Real cross-origin navigation is already blocked by the will-navigate handler above.
   mainView.webContents.on('did-navigate-in-page', (event, url, isMainFrame) => {
     if (isMainFrame) {
-      // If the page somehow changed its own URL via history API, navigate back
-      // to the last known game URL so the game state is not lost.
+      // Keep the stored URL in sync so future checks use the current URL.
       const mainTabData = tabs.find(t => t.id === 'main');
-      const expectedUrl = mainTabData ? mainTabData.url : null;
-      if (expectedUrl && url !== expectedUrl) {
-        log.info('Blocked in-page navigation on game view, restoring:', expectedUrl);
-        mainView.webContents.loadURL(expectedUrl);
+      if (mainTabData) {
+        mainTabData.url = url;
       }
     }
   });
