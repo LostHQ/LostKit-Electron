@@ -78,10 +78,6 @@ No pre-built installer is provided for macOS. If you want to run LostKit on a Ma
 
 From version 2.6.0 onwards, LostKit updates itself silently on Windows and Linux. When a new version is available it downloads in the background and installs the next time you close the app. You can manage update preferences in **Settings → Updates**.
 
-## Contributing
-
-Feel free to submit issues or pull requests on the [GitHub repository](https://github.com/LostHQ/LostKit-Electron).
-
 ## License
 
 This project is licensed under the GNU Public License v3.0
