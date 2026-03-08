@@ -248,6 +248,7 @@
             <button class="tab-btn active" onclick="switchTab('screenshots', this)">Screenshots</button>
             <button class="tab-btn" onclick="switchTab('appearance', this)">Appearance</button>
             <button class="tab-btn" onclick="switchTab('creators', this)">Creators</button>
+            <button class="tab-btn" id="updates-tab-btn" onclick="switchTab('updates', this)">Updates</button>
         </div>
     </div>
     <div class="settings-container">
@@ -457,6 +458,64 @@
                 <div class="status-text" id="creators-save-status"></div>
             </div>
         </div><!-- end tab-creators -->
+
+        <!-- Updates tab -->
+        <div id="tab-updates" class="tab-panel">
+
+            <div class="folder-section">
+                <div class="section-label">Version</div>
+                <div class="setting-row" style="justify-content:space-between;">
+                    <label>Installed</label>
+                    <span id="upd-current-version" style="font-size:12px;color:#51cf66;font-family:'RS-Bold',sans-serif;">—</span>
+                </div>
+                <div class="setting-row" id="upd-status-row" style="justify-content:space-between;display:none;">
+                    <label>Status</label>
+                    <span id="upd-status-text" style="font-size:12px;font-family:'RS-Bold',sans-serif;"></span>
+                </div>
+                <div class="setting-row" id="upd-whats-new-row" style="justify-content:flex-end;">
+                    <button id="upd-whats-new-btn" onclick="openWhatsNew()" disabled style="padding:3px 10px;font-size:11px;background:#1a1a1a;border-color:#444;color:#555;cursor:not-allowed;">What's new ↗</button>
+                </div>
+            </div>
+
+            <div class="folder-section">
+                <div class="section-label">Auto Updates</div>
+                <div class="setting-row">
+                    <label>Check on launch</label>
+                    <label class="sound-checkbox-label">
+                        <input type="checkbox" id="upd-enabled-check" checked>
+                        <span class="sound-checkmark"></span>
+                        <span>Automatically check for updates</span>
+                    </label>
+                </div>
+                <div id="upd-disabled-notice" style="display:none;margin-top:10px;padding:8px 10px;background:#2a1a00;border:1px solid #c8941c;border-radius:4px;font-size:11px;color:#c8941c;line-height:1.6;">
+                    ⚠ Auto-updates disabled. <span id="upd-disabled-msg"></span>
+                    <br><button id="upd-manual-download-btn" onclick="manualDownload()" style="display:none;margin-top:6px;padding:3px 10px;font-size:11px;background:#1a3a1a;border-color:#51cf66;color:#51cf66;">Download update</button>
+                </div>
+                <div style="color:#888;font-size:10px;margin-top:8px;line-height:1.5;">
+                    Updates download silently. LostKit installs on next restart — you are never interrupted.
+                </div>
+            </div>
+
+            <div id="upd-skip-section" class="folder-section" style="display:none;">
+                <div class="section-label">Skipped Version</div>
+                <div class="setting-row" style="justify-content:space-between;">
+                    <span id="upd-skipped-label" style="font-size:12px;color:#b8a060;"></span>
+                    <button onclick="clearSkip()" style="padding:4px 10px;font-size:11px;">Clear skip</button>
+                </div>
+            </div>
+
+            <div id="upd-ready-section" class="folder-section" style="display:none;border-top:2px solid #51cf66;">
+                <div class="section-label" style="color:#51cf66;">Update Ready</div>
+                <div style="color:#b8a060;font-size:11px;margin-bottom:12px;line-height:1.5;">
+                    Downloaded and ready. Will install automatically when you close LostKit,
+                    or click below to restart now.
+                </div>
+                <button onclick="installNow()" style="width:100%;background:#1a3a1a;border-color:#51cf66;color:#51cf66;">
+                    Restart &amp; Install now
+                </button>
+            </div>
+
+        </div><!-- end tab-updates -->
 
         <div style="text-align: center; margin-top: 16px;">
             <button onclick="closeWindow()">Close</button>
@@ -825,6 +884,105 @@
         document.getElementById('notif-live-check')?.addEventListener('change', saveCreatorSettings);
         document.getElementById('notif-video-check')?.addEventListener('change', saveCreatorSettings);
         document.getElementById('poll-interval-select')?.addEventListener('change', saveCreatorSettings);
+
+        // ── Updates tab ───────────────────────────────────────────────────────
+        function loadUpdaterSettings() {
+            ipcRenderer.invoke('get-updater-settings').then(s => {
+                if (!s) return;
+
+                const vEl = document.getElementById('upd-current-version');
+                if (vEl) vEl.textContent = 'v' + s.currentVersion;
+
+                const cb = document.getElementById('upd-enabled-check');
+                if (cb) cb.checked = s.enabled !== false;
+
+                // Status row
+                const statusRow = document.getElementById('upd-status-row');
+                const statusTxt = document.getElementById('upd-status-text');
+                if (s.downloading) {
+                    if (statusRow) statusRow.style.display = 'flex';
+                    if (statusTxt) { statusTxt.textContent = 'Downloading…'; statusTxt.style.color = '#c8941c'; }
+                } else if (s.updateReady && s.updateVersion) {
+                    if (statusRow) statusRow.style.display = 'flex';
+                    if (statusTxt) { statusTxt.textContent = 'v' + s.updateVersion + ' ready'; statusTxt.style.color = '#51cf66'; }
+                } else {
+                    if (statusRow) statusRow.style.display = 'none';
+                }
+
+                // Disabled notice
+                const notice = document.getElementById('upd-disabled-notice');
+                const msg    = document.getElementById('upd-disabled-msg');
+                const dlBtn  = document.getElementById('upd-manual-download-btn');
+                if (s.enabled === false) {
+                    if (notice) notice.style.display = 'block';
+                    if (msg) msg.textContent = s.updateVersion && s.updateVersion !== s.currentVersion
+                        ? `v${s.updateVersion} is available but won't download automatically.`
+                        : 'Updates will not be checked on launch.';
+                    if (dlBtn) dlBtn.style.display = (s.updateVersion && s.updateVersion !== s.currentVersion && !s.updateReady) ? 'inline-block' : 'none';
+                } else {
+                    if (notice) notice.style.display = 'none';
+                }
+
+                // Skipped version
+                const skipSec = document.getElementById('upd-skip-section');
+                const skipLbl = document.getElementById('upd-skipped-label');
+                if (s.skippedVersion) {
+                    if (skipSec) skipSec.style.display = 'block';
+                    if (skipLbl) skipLbl.textContent = 'Skipping v' + s.skippedVersion;
+                } else {
+                    if (skipSec) skipSec.style.display = 'none';
+                }
+
+                // What's new button
+                const whatsNewBtn = document.getElementById('upd-whats-new-btn');
+                if (whatsNewBtn) {
+                    const hasNotes = !!(s.releaseNotes && s.updateVersion);
+                    whatsNewBtn.disabled = !hasNotes;
+                    whatsNewBtn.style.background    = hasNotes ? '#1a2a1a' : '#1a1a1a';
+                    whatsNewBtn.style.borderColor   = hasNotes ? '#51cf66' : '#444';
+                    whatsNewBtn.style.color         = hasNotes ? '#51cf66' : '#555';
+                    whatsNewBtn.style.cursor        = hasNotes ? 'pointer'  : 'not-allowed';
+                    whatsNewBtn.title = hasNotes ? `What's new in v${s.updateVersion}` : 'No update available';
+                }
+
+                // Ready section
+                const readySec = document.getElementById('upd-ready-section');
+                if (readySec) readySec.style.display = s.updateReady ? 'block' : 'none';
+
+                // Tab badge
+                const tabBtn = document.getElementById('updates-tab-btn');
+                if (tabBtn && s.updateReady) { tabBtn.textContent = 'Updates ●'; tabBtn.style.color = '#51cf66'; }
+
+            }).catch(() => {});
+        }
+
+        document.getElementById('upd-enabled-check')?.addEventListener('change', (e) => {
+            ipcRenderer.send('set-updater-enabled', e.target.checked);
+            setTimeout(loadUpdaterSettings, 100);
+        });
+
+        function openWhatsNew() {
+            ipcRenderer.send('open-whats-new');
+        }
+
+        function manualDownload() {
+            ipcRenderer.send('updater-manual-download');
+            const btn = document.getElementById('upd-manual-download-btn');
+            if (btn) { btn.textContent = 'Downloading…'; btn.disabled = true; }
+        }
+
+        function installNow() {
+            ipcRenderer.send('updater-install-now');
+        }
+
+        function clearSkip() {
+            ipcRenderer.send('updater-clear-skip');
+            setTimeout(loadUpdaterSettings, 100);
+        }
+
+        ipcRenderer.on('update-ready', () => loadUpdaterSettings());
+
+        loadUpdaterSettings();
 
         function closeWindow() {
             window.close();

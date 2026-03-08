@@ -1,6 +1,6 @@
 {
   "name": "LostKit-2-by-LostHQ-Team",
-  "version": "2.5.6",
+  "version": "2.6.0",
   "author": "LostHQ",
   "description": "LostKit 2 - by LostHQ Team",
   "license": "GNU General Public License v3.0",
@@ -14,7 +14,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "build:win": "electron-builder --win --ia32 --x64",
-    "build:linux": "electron-builder --linux --ia32 --x64",
+    "build:linux": "electron-builder --linux --x64",
     "dist": "electron-builder --dir",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\""
@@ -42,26 +42,33 @@
   },
   "build": {
     "appId": "rs.losthq.lostkit",
-    "productName": "LostKit 2",
+    "productName": "LostKit-2",
     "files": [
       "**/*"
     ],
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://tools.losthq.rs/lostkit/"
+        "provider": "github",
+        "owner": "LostHQ",
+        "repo": "LostKit-Electron",
+        "releaseType": "release"
       }
     ],
     "win": {
       "target": [
-        "nsis",
-        "zip"
+        "nsis"
       ],
       "icon": "src/assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "artifactName": "${productName}-${version}.${ext}",
+      "icon": "src/assets/icon.png"
     }
   }
 }

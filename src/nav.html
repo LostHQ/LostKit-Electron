@@ -2,6 +2,12 @@
 <html>
 <head>
     <link rel="stylesheet" type="text/css" href="main.css" />
+    <style>
+        @keyframes badge-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.5; transform: scale(0.75); }
+        }
+    </style>
 </head>
 <body>
     <div class="nav" id="nav-panel">
@@ -12,8 +18,9 @@
             <div class="nav-button screenshot-btn" onclick="openScreenshotFolder()" title="Open Screenshot Folder">
                 <img src="assets/folder.png" class="nav-icon">
             </div>
-            <div class="nav-button screenshot-btn" onclick="openSettingsPopup()" title="Settings">
+            <div class="nav-button screenshot-btn" onclick="openSettingsPopup()" title="Settings" id="settings-nav-btn" style="position:relative;">
                 <img src="assets/settings.png" class="nav-icon">
+                <span id="update-badge" style="display:none;position:absolute;top:2px;right:2px;width:10px;height:10px;background:#51cf66;border-radius:50%;border:2px solid #141414;box-shadow:0 0 6px #51cf66;"></span>
             </div>
             <div class="nav-button screenshot-btn" onclick="ipcRenderer.send('open-calculator')" title="Calculator">
                 <img src="assets/calculator.png" class="nav-icon" style="width:30px; height:30px;">
@@ -37,7 +44,7 @@
         </div>
         <div class="nav-button special-link" onclick="openNav('hiscores')" data-nav-id="hiscores">
             <img src="assets/hiscores.png" class="nav-icon">
-            <span>Hiscores</span>
+            <span>Highscores</span>
         </div>
         <div class="nav-button special-link" onclick="openNotes()" data-nav-id="notes">
             <img src="assets/notes.png" class="nav-icon" onerror="this.style.display='none'">
@@ -127,6 +134,34 @@
         // React to live updates from settings
         ipcRenderer.on('update-nav-visibility', (event, hiddenIds) => {
             applyNavVisibility(hiddenIds);
+        });
+
+        // ── Update badge ──────────────────────────────────────────────────────
+        const updateBadge = document.getElementById('update-badge');
+        const settingsBtn = document.getElementById('settings-nav-btn');
+
+        ipcRenderer.on('update-downloading', (event, version) => {
+            if (updateBadge) {
+                updateBadge.style.display = 'block';
+                updateBadge.style.background = '#c8941c';
+                updateBadge.style.boxShadow = '0 0 6px #c8941c';
+                updateBadge.style.animation = 'badge-pulse 1.2s ease-in-out infinite';
+            }
+            if (settingsBtn) settingsBtn.title = 'Settings (downloading update…)';
+        });
+
+        ipcRenderer.on('update-progress', (event, pct) => {
+            if (settingsBtn) settingsBtn.title = `Settings (update ${pct}%)`;
+        });
+
+        ipcRenderer.on('update-ready', (event, version) => {
+            if (updateBadge) {
+                updateBadge.style.display = 'block';
+                updateBadge.style.background = '#51cf66';
+                updateBadge.style.boxShadow = '0 0 6px #51cf66';
+                updateBadge.style.animation = 'none';
+            }
+            if (settingsBtn) settingsBtn.title = `Settings (v${version} ready — restart to apply)`;
         });
     </script>
 </body>

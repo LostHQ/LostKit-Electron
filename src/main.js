@@ -1,4 +1,5 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, globalShortcut } = require('electron');
+const { autoUpdater } = require('electron-updater');
 
 const log = require('electron-log');
 const path = require('path');
@@ -43,45 +44,146 @@ let chatAnimTimer = null;
 
 log.transports.file.level = 'info';
 
-const VERSION_CHECK_URL = 'https://raw.githubusercontent.com/LostHQ/LostKit-Electron/main/version.json';
+// ── Auto-updater ──────────────────────────────────────────────────────────────
+let updateAvailableVersion = null;
+let updateDownloaded       = false;
+let updateDownloading      = false;
+let updateReleaseNotes     = null;
+let whatsNewWindow         = null;
 
-function compareVersions(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0, nb = pb[i] || 0;
-    if (na > nb) return 1;
-    if (na < nb) return -1;
-  }
-  return 0;
-}
+autoUpdater.autoDownload         = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
-async function checkForUpdates() {
-  try {
-    log.info('Checking for updates...');
-    const response = await fetch(VERSION_CHECK_URL + '?t=' + Date.now());
-    if (!response.ok) { log.info('Version check failed:', response.status); return; }
-    const data = await response.json();
-    const latestVersion = data.version;
-    const downloadUrl = data.url || 'https://github.com/LostHQ/LostKit-Electron/releases';
-    if (latestVersion && compareVersions(latestVersion, version) > 0) {
-      log.info('New version available:', latestVersion);
-      if (mainWindow) {
-        const choice = dialog.showMessageBoxSync(mainWindow, {
-          type: 'info', buttons: ['Later', 'Download Now'], defaultId: 1, cancelId: 0,
-          title: 'Update Available',
-          message: `A new version (v${latestVersion}) is available!`,
-          detail: `You are currently using v${version}. Click "Download Now" to get the latest version.`
-        });
-        if (choice === 1) shell.openExternal(downloadUrl);
-      }
-    } else {
-      log.info('App is up to date. Current:', version);
+function setupAutoUpdater() {
+  // Always check silently — even if disabled, so settings can show available version
+  autoUpdater.on('update-available', (info) => {
+    log.info('Update available:', info.version);
+    updateAvailableVersion = info.version;
+    updateReleaseNotes     = info.releaseNotes || null;
+
+    if (appSettings.updaterEnabled === false) {
+      log.info('Auto-updates disabled, not prompting.');
+      return;
     }
-  } catch (e) {
-    log.error('Version check failed:', e.message);
-  }
+    if (appSettings.skippedVersion === info.version) {
+      log.info('Skipped version:', info.version);
+      return;
+    }
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'info',
+      buttons: ['Download in background', 'Skip this version', 'Remind me later'],
+      defaultId: 0, cancelId: 2,
+      title: 'Update Available — LostKit',
+      message: `v${info.version} is available`,
+      detail: `You're on v${version}.\n\nDownloads silently in the background. LostKit installs it automatically next time you close and reopen — no interruption now.`
+    });
+
+    if (choice === 0) {
+      updateDownloading = true;
+      autoUpdater.downloadUpdate();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-downloading', info.version);
+      if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('update-downloading', info.version);
+    } else if (choice === 1) {
+      appSettings.skippedVersion = info.version;
+      saveSettingsDebounced();
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    log.info('App is up to date. v' + version);
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('update-not-available');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress.percent);
+    log.info('Download progress:', pct + '%');
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-progress', pct);
+    if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('update-progress', pct);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('Update downloaded, will install on quit:', info.version);
+    updateDownloaded  = true;
+    updateDownloading = false;
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-ready', info.version);
+    if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('update-ready', info.version);
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('update-ready', info.version);
+  });
+
+  autoUpdater.on('error', (err) => {
+    log.error('Auto-updater error:', err.message);
+    updateDownloading = false;
+  });
+
+  setTimeout(() => {
+    try { autoUpdater.checkForUpdates(); }
+    catch (e) { log.error('checkForUpdates failed:', e.message); }
+  }, 6000);
 }
+
+// ── Updater IPC ───────────────────────────────────────────────────────────────
+ipcMain.on('updater-install-now', () => {
+  if (updateDownloaded) autoUpdater.quitAndInstall(false, true);
+});
+ipcMain.handle('get-updater-settings', () => ({
+  enabled:        appSettings.updaterEnabled !== false,
+  skippedVersion: appSettings.skippedVersion || '',
+  currentVersion: version,
+  updateReady:    updateDownloaded,
+  downloading:    updateDownloading,
+  updateVersion:  updateAvailableVersion,
+  releaseNotes:   updateReleaseNotes
+}));
+
+ipcMain.on('open-whats-new', () => {
+  if (whatsNewWindow && !whatsNewWindow.isDestroyed()) {
+    whatsNewWindow.focus();
+    return;
+  }
+  const notes = updateReleaseNotes || '<p>No release notes available.</p>';
+  const html  = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a1a; color: #f0e68c; font-family: Arial, sans-serif; font-size: 13px; padding: 20px; line-height: 1.6; }
+  h1,h2,h3 { color: #f0e68c; margin: 14px 0 6px; font-size: 15px; }
+  h1 { font-size: 18px; border-bottom: 1px solid #8b6914; padding-bottom: 6px; margin-bottom: 12px; }
+  p { margin-bottom: 8px; }
+  ul, ol { padding-left: 20px; margin-bottom: 8px; }
+  li { margin-bottom: 4px; }
+  a { color: #51cf66; }
+  img { max-width: 100%; border-radius: 4px; margin: 8px 0; }
+  code { background: #2a2a2a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  pre { background: #2a2a2a; padding: 10px; border-radius: 4px; overflow-x: auto; margin-bottom: 8px; }
+</style>
+</head><body>${notes}</body></html>`;
+
+  whatsNewWindow = new BrowserWindow({
+    width: 560, height: 600,
+    title: `What's New in v${updateAvailableVersion || ''}`,
+    backgroundColor: '#1a1a1a',
+    autoHideMenuBar: true,
+    webPreferences: { nodeIntegration: false, contextIsolation: true }
+  });
+  whatsNewWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  whatsNewWindow.on('closed', () => { whatsNewWindow = null; });
+});
+ipcMain.on('set-updater-enabled', (event, enabled) => {
+  appSettings.updaterEnabled = !!enabled;
+  saveSettingsDebounced();
+});
+ipcMain.on('updater-clear-skip', () => {
+  appSettings.skippedVersion = '';
+  saveSettingsDebounced();
+});
+ipcMain.on('updater-manual-download', () => {
+  if (!updateDownloading && !updateDownloaded && updateAvailableVersion) {
+    updateDownloading = true;
+    autoUpdater.downloadUpdate();
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-downloading', updateAvailableVersion);
+    if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('update-downloading', updateAvailableVersion);
+  }
+});
 
 const settingsPath = path.join(process.env.APPDATA || process.env.HOME || '.', '.lostkit-settings.json');
 let appSettings = {
@@ -96,7 +198,9 @@ let appSettings = {
   creatorChannels: [],
   creatorNotifSettings: { notifLive: true, notifVideo: true, pollIntervalMs: 30000 },
   hiddenNavButtons: [],
-  streamWindow: { width: 960, height: 600, x: null, y: null, pinned: false, chatOpen: false, videoHidden: false, prevWinWidth: 960 }
+  streamWindow: { width: 960, height: 600, x: null, y: null, pinned: false, chatOpen: false, videoHidden: false, prevWinWidth: 960 },
+  updaterEnabled: true,
+  skippedVersion: ''
 };
 
 function loadSettings() {
@@ -681,7 +785,7 @@ app.whenReady().then(() => {
     title: `LostKit 2 v${version} - by LostHQ Team`
   });
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  mainWindow.webContents.on('did-finish-load', () => applyFontToView(mainWindow.webContents, false));
+  mainWindow.webContents.on('did-finish-load', () => { applyFontToView(mainWindow.webContents, false); setupAutoUpdater(); });
 
   // ── Screenshot IPC ──────────────────────────────────────────────────────────
   ipcMain.handle('select-screenshot-folder', async () => {
@@ -890,7 +994,6 @@ app.whenReady().then(() => {
     });
   });
 
-  setTimeout(() => checkForUpdates(), 3000);
   updateAdventureCapture();
 
   navView = new WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } });
@@ -1825,6 +1928,11 @@ app.whenReady().then(() => {
     }
   });
 
+  mainWindow.on('close', () => {
+    BrowserWindow.getAllWindows().forEach(win => {
+      try { if (win !== mainWindow && !win.isDestroyed()) win.destroy(); } catch (e) {}
+    });
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
 
   ipcMain.on('set-chat-height', (event, height) => { chatHeightValue = Math.max(200, Math.min(height, 800)); appSettings.chatHeight = chatHeightValue; saveSettingsDebounced(); updateBounds(); });
@@ -1866,6 +1974,8 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 app.on('will-quit', () => {
-
+  BrowserWindow.getAllWindows().forEach(win => {
+    try { if (!win.isDestroyed()) win.destroy(); } catch (e) {}
+  });
   globalShortcut.unregisterAll();
 });
