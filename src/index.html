@@ -128,7 +128,7 @@
     ipcRenderer.on('update-resizer', (event, height) => {
       if (!isResizing) {
         const resizer = document.getElementById('chat-resizer');
-        if (resizer.style.display === 'block') {
+        if (resizer.style.display !== 'none') {
           resizer.style.bottom = height + 'px';
         }
       }

@@ -645,20 +645,64 @@ if (appSettings.lastWorld && appSettings.lastWorld.url) {
   tabByUrl.set(tabs[0].url, 'main');
 }
 
+let windowManagerReflowTimers = [];
+let rendererResizeTimer = null;
+
+function getViewWebContents() {
+  const contents = [];
+  if (mainWindow && !mainWindow.isDestroyed()) contents.push(mainWindow.webContents);
+  if (navView && navView.webContents) contents.push(navView.webContents);
+  if (chatView && chatView.webContents) contents.push(chatView.webContents);
+  primaryViews.forEach(({ view }) => {
+    if (view && view.webContents) contents.push(view.webContents);
+  });
+  return contents.filter(wc => wc && !wc.isDestroyed());
+}
+
+function scheduleRendererResizeEvents() {
+  if (rendererResizeTimer) clearTimeout(rendererResizeTimer);
+  rendererResizeTimer = setTimeout(() => {
+    rendererResizeTimer = null;
+    getViewWebContents().forEach(wc => {
+      wc.executeJavaScript("window.dispatchEvent(new Event('resize'));", true).catch(() => {});
+    });
+  }, 16);
+}
+
 function updateBounds() {
-  const contentBounds = mainWindow.getContentBounds();
-  const width = contentBounds.width, height = contentBounds.height;
-  const navWidth = navPanelCollapsed ? 0 : NAV_PANEL_WIDTH;
-  const tabHeight = 28;
-  const chatHeight = chatVisible ? chatHeightValue : 0;
+  if (!mainWindow || mainWindow.isDestroyed() || !navView || !chatView) return;
+
+  const [rawWidth, rawHeight] = mainWindow.getContentSize();
+  const width = Math.max(0, rawWidth);
+  const height = Math.max(0, rawHeight);
+  const tabHeight = Math.min(28, height);
+  const navWidth = navPanelCollapsed ? 0 : Math.min(NAV_PANEL_WIDTH, width);
   const dividerHeight = chatVisible ? 3 : 0;
-  const primaryWidth = width - navWidth;
-  const primaryHeight = height - tabHeight - chatHeight - dividerHeight;
+  const maxChatHeight = Math.max(0, height - tabHeight - dividerHeight);
+  const chatHeight = chatVisible ? Math.min(chatHeightValue, maxChatHeight) : 0;
+  const primaryWidth = Math.max(0, width - navWidth);
+  const primaryHeight = Math.max(0, height - tabHeight - chatHeight - dividerHeight);
+
   primaryViews.forEach(({ view }) => view.setBounds({ x: 0, y: tabHeight, width: primaryWidth, height: primaryHeight }));
-  if (!navPanelCollapsed) { navView.setVisible(true); navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height }); }
-  else { navView.setVisible(false); }
+  if (!navPanelCollapsed) {
+    navView.setVisible(true);
+    navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
+  } else {
+    navView.setVisible(false);
+  }
   chatView.setBounds({ x: 0, y: height - chatHeight, width: primaryWidth, height: chatHeight });
   mainWindow.webContents.send('update-resizer', chatHeight);
+  scheduleRendererResizeEvents();
+}
+
+function scheduleWindowManagerReflow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  updateBounds();
+  windowManagerReflowTimers.forEach(clearTimeout);
+  windowManagerReflowTimers = [50, 150, 350, 800].map(delay => setTimeout(() => {
+    updateBounds();
+  }, delay));
 }
 
 function animateChatToggle(toVisible) {
@@ -771,7 +815,7 @@ app.whenReady().then(() => {
       else { navPanelPrevX = null; }
       mainWindow.setBounds({ width: bounds.width + NAV_PANEL_WIDTH, height: bounds.height, x: newX, y: bounds.y });
     }
-    updateBounds();
+    scheduleWindowManagerReflow();
     navView.webContents.send('nav-panel-collapsed', navPanelCollapsed);
   });
 
@@ -785,7 +829,13 @@ app.whenReady().then(() => {
     title: `LostKit 2 v${version} - by LostHQ Team`
   });
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  mainWindow.webContents.on('did-finish-load', () => { applyFontToView(mainWindow.webContents, false); setupAutoUpdater(); });
+  mainWindow.webContents.on('did-finish-load', () => {
+    applyFontToView(mainWindow.webContents, false);
+    setupAutoUpdater();
+    mainWindow.webContents.send('nav-panel-collapsed', navPanelCollapsed);
+    mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+    scheduleWindowManagerReflow();
+  });
 
   // ── Screenshot IPC ──────────────────────────────────────────────────────────
   ipcMain.handle('select-screenshot-folder', async () => {
@@ -1000,6 +1050,7 @@ app.whenReady().then(() => {
   navView.webContents.loadFile(path.join(__dirname, 'nav.html'));
   navView.webContents.on('did-finish-load', () => {
     applyFontToView(navView.webContents, true);
+    scheduleWindowManagerReflow();
     // Send nav visibility whenever nav.html loads
     if (currentNavViewName === 'nav' && appSettings.hiddenNavButtons?.length) {
       navView.webContents.send('update-nav-visibility', appSettings.hiddenNavButtons);
@@ -1014,9 +1065,10 @@ app.whenReady().then(() => {
 
   chatView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') } });
   chatView.webContents.loadURL('https://irc.losthq.rs');
+  chatView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
   chatView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   mainWindow.contentView.addChildView(chatView);
-  chatView.setVisible(true);
+  chatView.setVisible(chatVisible);
   if (appSettings.chatZoom && appSettings.chatZoom !== 1) {
     chatView.webContents.once('did-finish-load', () => { try { chatView.webContents.setZoomFactor(appSettings.chatZoom); } catch (e) {} });
   }
@@ -1024,6 +1076,7 @@ app.whenReady().then(() => {
   const mainView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'gameview-preload.js') } });
   const startWorldUrl = tabs[0].url, startWorldTitle = tabs[0].title;
   mainView.webContents.loadURL(startWorldUrl);
+  mainView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
   mainView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   // Clear history after initial load so back/forward are dead from the start
   mainView.webContents.once('did-finish-load', () => { try { const wc = mainView.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory(); } catch(e) {} });
@@ -1126,10 +1179,17 @@ app.whenReady().then(() => {
   mainWindow.on('moved', saveMainWindowBounds);
   mainWindow.webContents.send('update-active', 'main');
   mainWindow.webContents.send('update-tab-title', 'main', startWorldTitle);
-  updateBounds();
+  scheduleWindowManagerReflow();
   mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
 
-  mainWindow.on('resize', () => updateBounds());
+  ['resize', 'resized', 'show', 'focus', 'restore', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].forEach(eventName => {
+    mainWindow.on(eventName, () => scheduleWindowManagerReflow());
+  });
+
+  const { screen } = require('electron');
+  ['display-added', 'display-removed', 'display-metrics-changed'].forEach(eventName => {
+    screen.on(eventName, () => scheduleWindowManagerReflow());
+  });
 
   // ══════════════════════════════════════════════════════════════════════════════
   // GAME-CLICK AFK TIMER (legacy — kept for stopwatch panel IPC compatibility)
@@ -1685,6 +1745,7 @@ app.whenReady().then(() => {
     tabs.push({ id, url, title }); tabByUrl.set(url, id);
     const newView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') } });
     newView.webContents.loadURL(url);
+    newView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
     newView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
     mainWindow.contentView.addChildView(newView);
     primaryViews.push({ id, view: newView });
@@ -1719,6 +1780,7 @@ app.whenReady().then(() => {
     const cv = primaryViews.find(pv => pv.id === id);
     if (cv) cv.view.setVisible(true);
     mainWindow.webContents.send('update-active', id);
+    scheduleWindowManagerReflow();
   });
 
   ipcMain.on('switch-nav-view', (event, view) => {
