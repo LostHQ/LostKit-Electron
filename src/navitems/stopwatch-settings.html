@@ -937,13 +937,15 @@
                 // What's new button
                 const whatsNewBtn = document.getElementById('upd-whats-new-btn');
                 if (whatsNewBtn) {
-                    const hasNotes = !!(s.releaseNotes && s.updateVersion);
-                    whatsNewBtn.disabled = !hasNotes;
-                    whatsNewBtn.style.background    = hasNotes ? '#1a2a1a' : '#1a1a1a';
-                    whatsNewBtn.style.borderColor   = hasNotes ? '#51cf66' : '#444';
-                    whatsNewBtn.style.color         = hasNotes ? '#51cf66' : '#555';
-                    whatsNewBtn.style.cursor        = hasNotes ? 'pointer'  : 'not-allowed';
-                    whatsNewBtn.title = hasNotes ? `What's new in v${s.updateVersion}` : 'No update available';
+                    const releaseVersion = s.updateVersion || s.currentVersion;
+                    const canOpenRelease = !!releaseVersion;
+                    whatsNewBtn.dataset.version = releaseVersion || '';
+                    whatsNewBtn.disabled = !canOpenRelease;
+                    whatsNewBtn.style.background    = canOpenRelease ? '#1a2a1a' : '#1a1a1a';
+                    whatsNewBtn.style.borderColor   = canOpenRelease ? '#51cf66' : '#444';
+                    whatsNewBtn.style.color         = canOpenRelease ? '#51cf66' : '#555';
+                    whatsNewBtn.style.cursor        = canOpenRelease ? 'pointer'  : 'not-allowed';
+                    whatsNewBtn.title = canOpenRelease ? `Open release notes for v${releaseVersion}` : 'Release notes unavailable';
                 }
 
                 // Ready section
@@ -963,7 +965,8 @@
         });
 
         function openWhatsNew() {
-            ipcRenderer.send('open-whats-new');
+            const btn = document.getElementById('upd-whats-new-btn');
+            ipcRenderer.send('open-whats-new', btn?.dataset.version || '');
         }
 
         function manualDownload() {

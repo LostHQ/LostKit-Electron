@@ -7,6 +7,7 @@
   <div id="tabs-bar" style="width: 100%; display: flex; align-items: stretch;">
     <div id="tabs" style="overflow-x: auto; white-space: nowrap; flex: 1 1 auto; display: flex; align-items: stretch;">
       <button id="nav-panel-toggle" style="display: flex; align-items: center; justify-content: center; font-size: 22px; border: none; background: #8b6914; color: #fff; border-radius: 8px 0 0 8px; width: 36px; height: 36px; cursor: pointer; margin-right: 4px; transition: background 0.2s;">&gt;</button>
+      <button id="nav-panel-strip-toggle" title="Toggle strip mode" style="display: flex; align-items: center; justify-content: center; font-size: 16px; border: none; background: #3d2807; color: #fff; border-radius: 6px; width: 36px; height: 36px; cursor: pointer; margin-right: 8px; transition: background 0.15s;">≡</button>
       <div class="tab active" data-id="main">W2 HD</div>
     </div>
   </div>
@@ -69,9 +70,26 @@
       setNavPanelToggleState(navPanelCollapsed);
       require('electron').ipcRenderer.send('toggle-nav-panel');
     };
+    const navPanelStripToggleBtn = document.getElementById('nav-panel-strip-toggle');
+    if (navPanelStripToggleBtn) {
+      navPanelStripToggleBtn.addEventListener('click', () => {
+        require('electron').ipcRenderer.send('toggle-nav-panel-mode');
+      });
+    }
     require('electron').ipcRenderer.on('nav-panel-collapsed', (event, collapsed) => {
       navPanelCollapsed = collapsed;
       setNavPanelToggleState(collapsed);
+    });
+    require('electron').ipcRenderer.on('nav-panel-mode', (event, mode) => {
+      const btn = document.getElementById('nav-panel-strip-toggle');
+      if (!btn) return;
+      if (mode === 'strip') {
+        btn.style.background = '#51cf66';
+        btn.title = 'Strip mode enabled';
+      } else {
+        btn.style.background = '#3d2807';
+        btn.title = 'Enable strip mode';
+      }
     });
     // Set initial state (in case of reload)
     setNavPanelToggleState(navPanelCollapsed);
@@ -163,6 +181,9 @@
       }
     });
 
+    // Store current alert sound so we can stop it on click
+    let currentAlertAudio = null;
+
     // Listen for alert sound request from main process (background timer)
     // This runs in main window which is always loaded
     ipcRenderer.on('play-alert-sound', (event, data) => {
@@ -170,16 +191,59 @@
       
       if (data.customSoundPath) {
         try {
+          // Stop any currently playing alert sound
+          if (currentAlertAudio) {
+            currentAlertAudio.pause();
+            currentAlertAudio.currentTime = 0;
+            currentAlertAudio.src = '';
+            currentAlertAudio = null;
+          }
+          
           const audio = new Audio('file://' + data.customSoundPath);
           audio.volume = data.soundVolume / 100;
+          currentAlertAudio = audio;
           audio.play().then(() => {
             console.log('Background alert sound played from main window');
+            // Clean up audio reference when playback ends naturally
+            audio.addEventListener('ended', () => {
+              if (currentAlertAudio === audio) currentAlertAudio = null;
+            }, { once: true });
           }).catch(e => {
             console.log('Failed to play sound in main window:', e);
+            currentAlertAudio = null;
           });
         } catch (e) {
           console.log('Error playing sound in main window:', e);
+          currentAlertAudio = null;
         }
+      }
+    });
+
+    // Stop alert sound when user clicks anywhere on the game window
+    document.addEventListener('click', (e) => {
+      if (currentAlertAudio) {
+        console.log('User clicked - stopping alert sound');
+        currentAlertAudio.pause();
+        currentAlertAudio.currentTime = 0;
+        currentAlertAudio.src = '';
+        currentAlertAudio = null;
+      }
+    }, true); // Use capture phase to catch all clicks
+
+    // Listen for stop-alert-sound IPC from main process (when timer resets)
+    ipcRenderer.on('stop-alert-sound', () => {
+      // Stop any currently playing alert sound
+      if (currentAlertAudio) {
+        try {
+          // Pause and immediately seek to start to allow quick restart if needed
+          currentAlertAudio.pause();
+          currentAlertAudio.currentTime = 0;
+          // Remove the audio element to ensure it stops completely
+          currentAlertAudio.src = '';
+        } catch (e) {
+          console.log('Error stopping audio:', e);
+        }
+        currentAlertAudio = null;
       }
     });
   </script>

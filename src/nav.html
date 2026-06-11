@@ -26,6 +26,7 @@
                 <img src="assets/calculator.png" class="nav-icon" style="width:30px; height:30px;">
             </div>
         </div>
+        <!-- strip toggle moved to header -->
         <div class="nav-button special-link" onclick="openNav('worldswitcher')" data-nav-id="worldswitcher">
             <img src="assets/LostCity.png" class="nav-icon">
             <span>Switch World</span>
@@ -33,6 +34,7 @@
         <div class="nav-button special-link" onclick="toggleChat()" data-nav-id="chat">
             <img src="assets/chat.png" class="nav-icon">
             <span>Chat</span>
+            <span class="chat-state">Off</span>
         </div>
         <div class="nav-button special-link" onclick="openNav('stopwatch')" data-nav-id="stopwatch">
             <img src="assets/watch.png" class="nav-icon" onerror="this.style.display='none'">
@@ -119,6 +121,30 @@
         function toggleNavPanel() {
             ipcRenderer.send('toggle-nav-panel');
         }
+
+        function toggleNavPanelStripMode() {
+            ipcRenderer.send('toggle-nav-panel-mode');
+        }
+
+        function setNavPanelMode(mode) {
+            const stripBtn = document.getElementById('nav-panel-strip-toggle');
+            const stripLabel = document.getElementById('nav-panel-strip-label');
+            if (stripBtn) {
+                stripBtn.classList.toggle('active', mode === 'strip');
+                stripBtn.style.background = mode === 'strip' ? '#c8941c' : '#3d2807';
+                stripBtn.title = mode === 'strip' ? 'Strip mode is enabled' : 'Enable strip mode';
+            }
+            if (stripLabel) {
+                stripLabel.textContent = mode === 'strip' ? 'Strip mode enabled' : 'Strip mode off';
+            }
+            document.body.classList.toggle('strip-mode', mode === 'strip');
+        }
+
+        document.getElementById('nav-panel-strip-toggle')?.addEventListener('click', toggleNavPanelStripMode);
+        ipcRenderer.on('nav-panel-mode', (event, mode) => {
+            setNavPanelMode(mode || 'expanded');
+        });
+
         ipcRenderer.on('nav-panel-collapsed', (event, collapsed) => {
             const icon = document.getElementById('nav-toggle-icon');
             if (icon) icon.textContent = collapsed ? '⮜' : '⮞';
@@ -129,6 +155,19 @@
                 el.style.display = hiddenIds.includes(el.getAttribute('data-nav-id')) ? 'none' : '';
             });
         }
+
+        function updateChatButtonState(visible) {
+            const chatButton = document.querySelector('.nav-button[data-nav-id="chat"]');
+            if (!chatButton) return;
+            chatButton.classList.toggle('chat-open', visible);
+            chatButton.classList.toggle('chat-closed', !visible);
+            const stateSpan = chatButton.querySelector('.chat-state');
+            if (stateSpan) stateSpan.textContent = visible ? 'Disable chat' : 'Enable chat';
+        }
+
+        ipcRenderer.on('chat-toggled', (event, visible) => {
+            updateChatButtonState(visible);
+        });
 
         // Apply visibility on load
         ipcRenderer.invoke('get-hidden-nav-buttons').then(hiddenIds => {

@@ -145,6 +145,17 @@ let seconds = 0;
 let interval = null;
 let running = false;
 let soundPlayed = false;
+let currentAlertAudio = null; // Track currently playing alert audio for interruption
+
+function stopCurrentAlertSound() {
+    if (!currentAlertAudio) return;
+    try {
+        currentAlertAudio.pause();
+        currentAlertAudio.currentTime = 0;
+        currentAlertAudio.src = '';
+    } catch (e) {}
+    currentAlertAudio = null;
+}
 
 // ==================== CONFIG FUNCTIONS ====================
 
@@ -283,20 +294,32 @@ function playDefaultBeep() {
 function playBeep() {
     if (!soundAlert) return;
     if (!audioContext) initAudio();
+    
+    // Stop any existing alert sound before playing new one
+    stopCurrentAlertSound();
 
     // If custom sound is set, try to play it
     if (customSoundPath && fs.existsSync(customSoundPath)) {
         try {
             const audio = new Audio(`file://${customSoundPath}`);
             audio.volume = soundVolume / 100;
-            audio.play().catch(e => {
+            currentAlertAudio = audio;
+            audio.addEventListener('ended', () => {
+                if (currentAlertAudio === audio) currentAlertAudio = null;
+            }, { once: true });
+            audio.play().then(() => {
+                console.log('Custom sound started at volume:', soundVolume);
+            }).catch(e => {
+                if (currentAlertAudio !== audio) return;
                 console.log('Failed to play custom sound, falling back to default packaged sound:', e);
+                currentAlertAudio = null;
                 playDefaultPackagedSound();
             });
             console.log('Custom sound played:', customSoundPath);
             return;
         } catch (e) {
             console.log('Error playing custom sound:', e);
+            currentAlertAudio = null;
         }
     }
 
@@ -305,15 +328,24 @@ function playBeep() {
 }
 
 function playDefaultPackagedSound() {
+    // Stop any existing alert sound before playing new one
+    stopCurrentAlertSound();
+    
     // Try to play the default packaged sound
     if (defaultPackagedSoundPath && fs.existsSync(defaultPackagedSoundPath)) {
         try {
             const audio = new Audio(`file://${defaultPackagedSoundPath}`);
             audio.volume = soundVolume / 100;
+            currentAlertAudio = audio;
+            audio.addEventListener('ended', () => {
+                if (currentAlertAudio === audio) currentAlertAudio = null;
+            }, { once: true });
             audio.play().then(() => {
-                console.log('Default packaged sound played at volume:', soundVolume);
+                console.log('Default packaged sound started at volume:', soundVolume);
             }).catch(e => {
+                if (currentAlertAudio !== audio) return;
                 console.log('Failed to play default packaged sound, falling back to generated beep:', e);
+                currentAlertAudio = null;
                 playDefaultBeep();
             });
             return;
@@ -487,6 +519,9 @@ resetBtn.addEventListener('click', () => {
     seconds = 0;
     soundPlayed = false;
     timerDisplay.classList.remove('flash-red');
+    
+    // Stop any playing alert sound immediately
+    stopCurrentAlertSound();
     
     // Reset the appropriate timer depending on mode/config
     if (afkGameClick && currentMode === 'afk') {
@@ -1014,6 +1049,9 @@ ipcRenderer.on('afk-game-click-reset', () => {
     
     // Only reset if we're in AFK mode
     if (currentMode === 'afk') {
+        // Stop any playing alert sound immediately
+        stopCurrentAlertSound();
+        
         // Reset the timer and restart it
         seconds = 0;
         soundPlayed = false;
@@ -1123,27 +1161,10 @@ ipcRenderer.on('background-timer-tick', (event, data) => {
     }
 });
 
-// Listen for alert sound request from main process (background timer)
-ipcRenderer.on('play-alert-sound', (event, data) => {
-    console.log('Received play-alert-sound request:', data);
-    
-    if (data.customSoundPath && fs.existsSync(data.customSoundPath)) {
-        try {
-            const audio = new Audio(`file://${data.customSoundPath}`);
-            audio.volume = data.soundVolume / 100;
-            audio.play().then(() => {
-                console.log('Background alert sound played:', data.customSoundPath);
-            }).catch(e => {
-                console.log('Failed to play background alert sound:', e);
-                playDefaultPackagedSound();
-            });
-        } catch (e) {
-            console.log('Error playing background alert sound:', e);
-            playDefaultPackagedSound();
-        }
-    } else {
-        playDefaultPackagedSound();
-    }
+// Listen for stop-alert-sound request from main process (when timer is reset)
+ipcRenderer.on('stop-alert-sound', () => {
+    console.log('Received stop-alert-sound request');
+    stopCurrentAlertSound();
 });
 
 // Back button function

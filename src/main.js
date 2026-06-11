@@ -37,6 +37,10 @@ function snapToZoomStep(factor) {
 }
 
 const NAV_PANEL_WIDTH = 250;
+const NAV_PANEL_STRIP_WIDTH = 110;
+let navPanelMode = 'expanded';
+let navPanelDesiredMode = 'expanded';
+let navPanelPrevMode = null;
 let navPanelCollapsed = false;
 let navPanelPrevX = null;
 let chatPrevY     = null;
@@ -49,7 +53,6 @@ let updateAvailableVersion = null;
 let updateDownloaded       = false;
 let updateDownloading      = false;
 let updateReleaseNotes     = null;
-let whatsNewWindow         = null;
 
 autoUpdater.autoDownload         = false;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -136,37 +139,13 @@ ipcMain.handle('get-updater-settings', () => ({
   releaseNotes:   updateReleaseNotes
 }));
 
-ipcMain.on('open-whats-new', () => {
-  if (whatsNewWindow && !whatsNewWindow.isDestroyed()) {
-    whatsNewWindow.focus();
-    return;
-  }
-  const notes = updateReleaseNotes || '<p>No release notes available.</p>';
-  const html  = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #1a1a1a; color: #f0e68c; font-family: Arial, sans-serif; font-size: 13px; padding: 20px; line-height: 1.6; }
-  h1,h2,h3 { color: #f0e68c; margin: 14px 0 6px; font-size: 15px; }
-  h1 { font-size: 18px; border-bottom: 1px solid #8b6914; padding-bottom: 6px; margin-bottom: 12px; }
-  p { margin-bottom: 8px; }
-  ul, ol { padding-left: 20px; margin-bottom: 8px; }
-  li { margin-bottom: 4px; }
-  a { color: #51cf66; }
-  img { max-width: 100%; border-radius: 4px; margin: 8px 0; }
-  code { background: #2a2a2a; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-  pre { background: #2a2a2a; padding: 10px; border-radius: 4px; overflow-x: auto; margin-bottom: 8px; }
-</style>
-</head><body>${notes}</body></html>`;
-
-  whatsNewWindow = new BrowserWindow({
-    width: 560, height: 600,
-    title: `What's New in v${updateAvailableVersion || ''}`,
-    backgroundColor: '#1a1a1a',
-    autoHideMenuBar: true,
-    webPreferences: { nodeIntegration: false, contextIsolation: true }
+ipcMain.on('open-whats-new', (event, requestedVersion) => {
+  const targetVersion = (requestedVersion || updateAvailableVersion || version || '').toString().trim();
+  const releaseTag = targetVersion.startsWith('v') ? targetVersion : `v${targetVersion}`;
+  const releaseUrl = `https://github.com/LostHQ/LostKit-Electron/releases/tag/${encodeURIComponent(releaseTag)}`;
+  shell.openExternal(releaseUrl).catch((err) => {
+    log.error('Failed to open release page:', err);
   });
-  whatsNewWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-  whatsNewWindow.on('closed', () => { whatsNewWindow = null; });
 });
 ipcMain.on('set-updater-enabled', (event, enabled) => {
   appSettings.updaterEnabled = !!enabled;
@@ -676,7 +655,9 @@ function updateBounds() {
   const width = Math.max(0, rawWidth);
   const height = Math.max(0, rawHeight);
   const tabHeight = Math.min(28, height);
-  const navWidth = navPanelCollapsed ? 0 : Math.min(NAV_PANEL_WIDTH, width);
+  const navWidth = navPanelMode === 'collapsed'
+    ? 0
+    : (navPanelMode === 'strip' ? NAV_PANEL_STRIP_WIDTH : Math.min(NAV_PANEL_WIDTH, width));
   const dividerHeight = chatVisible ? 3 : 0;
   const maxChatHeight = Math.max(0, height - tabHeight - dividerHeight);
   const chatHeight = chatVisible ? Math.min(chatHeightValue, maxChatHeight) : 0;
@@ -684,7 +665,7 @@ function updateBounds() {
   const primaryHeight = Math.max(0, height - tabHeight - chatHeight - dividerHeight);
 
   primaryViews.forEach(({ view }) => view.setBounds({ x: 0, y: tabHeight, width: primaryWidth, height: primaryHeight }));
-  if (!navPanelCollapsed) {
+  if (navPanelMode !== 'collapsed') {
     navView.setVisible(true);
     navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
   } else {
@@ -757,6 +738,9 @@ function animateChatToggle(toVisible) {
       mainWindow.setBounds(targetBounds);
       updateBounds();
       mainWindow.webContents.send('chat-toggled', toVisible, chatHeightValue);
+      if (navView && !navView.webContents.isDestroyed()) {
+        navView.webContents.send('chat-toggled', toVisible, chatHeightValue);
+      }
     }
   }, MS);
 }
@@ -791,12 +775,30 @@ app.whenReady().then(() => {
   initDefaultPackagedSoundPath();
   startCreatorPolling(); // background polling for creators
 
-  if (typeof appSettings.navPanelCollapsed === 'boolean') navPanelCollapsed = appSettings.navPanelCollapsed;
+  if (typeof appSettings.navPanelMode === 'string') {
+    navPanelDesiredMode = appSettings.navPanelMode;
+  } else {
+    navPanelDesiredMode = 'expanded';
+  }
+  navPanelMode = (typeof appSettings.navPanelCollapsed === 'boolean' && appSettings.navPanelCollapsed)
+    ? 'collapsed'
+    : navPanelDesiredMode;
+  navPanelCollapsed = navPanelMode === 'collapsed';
 
   ipcMain.on('toggle-nav-panel', () => {
-    navPanelCollapsed = !navPanelCollapsed;
+    if (navPanelMode === 'collapsed') {
+      navPanelMode = navPanelDesiredMode || 'expanded';
+      navPanelCollapsed = false;
+    } else {
+      navPanelPrevMode = navPanelMode;
+      navPanelMode = 'collapsed';
+      navPanelCollapsed = true;
+    }
+
+    appSettings.navPanelMode = navPanelDesiredMode;
     appSettings.navPanelCollapsed = navPanelCollapsed;
     saveSettingsDebounced();
+
     const bounds = mainWindow.getBounds();
     const { screen } = require('electron');
     const display = screen.getDisplayMatching(bounds);
@@ -804,19 +806,72 @@ app.whenReady().then(() => {
     log.info('--- NAV PANEL TOGGLE ---');
     log.info('Window bounds:', bounds);
     log.info('Display workArea:', display.workArea);
+
+    const currentNavWidth = navPanelPrevMode === 'strip' ? NAV_PANEL_STRIP_WIDTH : NAV_PANEL_WIDTH;
     if (navPanelCollapsed) {
       let restoreX = bounds.x;
       if (navPanelPrevX !== null) { restoreX = navPanelPrevX; navPanelPrevX = null; }
-      mainWindow.setBounds({ width: Math.max(bounds.width - NAV_PANEL_WIDTH, 800), height: bounds.height, x: restoreX, y: bounds.y });
+      mainWindow.setBounds({ width: Math.max(bounds.width - currentNavWidth, 800), height: bounds.height, x: restoreX, y: bounds.y });
     } else {
       let newX = bounds.x;
-      const expandedRight = bounds.x + bounds.width + NAV_PANEL_WIDTH;
+      const expandedWidth = navPanelMode === 'strip' ? NAV_PANEL_STRIP_WIDTH : NAV_PANEL_WIDTH;
+      const expandedRight = bounds.x + bounds.width + expandedWidth;
       if (expandedRight > displayRight) { navPanelPrevX = bounds.x; newX = bounds.x - (expandedRight - displayRight); }
       else { navPanelPrevX = null; }
-      mainWindow.setBounds({ width: bounds.width + NAV_PANEL_WIDTH, height: bounds.height, x: newX, y: bounds.y });
+      mainWindow.setBounds({ width: bounds.width + expandedWidth, height: bounds.height, x: newX, y: bounds.y });
     }
+
     scheduleWindowManagerReflow();
-    navView.webContents.send('nav-panel-collapsed', navPanelCollapsed);
+    if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('nav-panel-collapsed', navPanelCollapsed);
+  });
+
+  ipcMain.on('toggle-nav-panel-mode', () => {
+    if (navPanelMode === 'collapsed') {
+      navPanelMode = navPanelDesiredMode || 'expanded';
+      navPanelCollapsed = false;
+    }
+
+    const prevMode = navPanelMode;
+    if (navPanelMode === 'expanded') {
+      navPanelMode = 'strip';
+      navPanelDesiredMode = 'strip';
+    } else if (navPanelMode === 'strip') {
+      navPanelMode = 'expanded';
+      navPanelDesiredMode = 'expanded';
+    }
+
+    navPanelCollapsed = false;
+    appSettings.navPanelMode = navPanelDesiredMode;
+    appSettings.navPanelCollapsed = false;
+    saveSettingsDebounced();
+
+    // Adjust the actual native window size so toggling between strip and
+    // expanded does not reduce the primary view width — grow/shrink the
+    // window instead, keeping the game canvas size intact.
+    try {
+      const bounds = mainWindow.getBounds();
+      const { screen } = require('electron');
+      const display = screen.getDisplayMatching(bounds);
+      const delta = NAV_PANEL_WIDTH - NAV_PANEL_STRIP_WIDTH;
+      if (prevMode === 'expanded' && navPanelMode === 'strip') {
+        const newWidth = Math.max(800, bounds.width - delta);
+        let newX = bounds.x;
+        const newRight = newX + newWidth;
+        const displayRight = display.workArea.x + display.workArea.width;
+        if (newRight > displayRight) newX = Math.max(display.workArea.x, bounds.x - (newRight - displayRight));
+        mainWindow.setBounds({ width: newWidth, height: bounds.height, x: newX, y: bounds.y });
+      } else if (prevMode === 'strip' && navPanelMode === 'expanded') {
+        const newWidth = bounds.width + delta;
+        let newX = bounds.x;
+        const newRight = newX + newWidth;
+        const displayRight = display.workArea.x + display.workArea.width;
+        if (newRight > displayRight) newX = Math.max(display.workArea.x, bounds.x - (newRight - displayRight));
+        mainWindow.setBounds({ width: newWidth, height: bounds.height, x: newX, y: bounds.y });
+      }
+    } catch (e) {}
+
+    scheduleWindowManagerReflow();
+    if (navView && !navView.webContents.isDestroyed()) navView.webContents.send('nav-panel-mode', navPanelMode);
   });
 
   const savedBounds = appSettings.mainWindow || {};
@@ -834,6 +889,9 @@ app.whenReady().then(() => {
     setupAutoUpdater();
     mainWindow.webContents.send('nav-panel-collapsed', navPanelCollapsed);
     mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+    if (navView && !navView.webContents.isDestroyed()) {
+      navView.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+    }
     scheduleWindowManagerReflow();
   });
 
@@ -860,45 +918,45 @@ app.whenReady().then(() => {
     // not the entire BrowserView bounds. The preload responds with 'save-screenshot'.
     mainPV.view.webContents.send('request-screenshot');
   }
-  // Canvas-based screenshot save (from gameview-preload.js canvas capture)
-  ipcMain.on('save-screenshot', (event, dataUrl) => {
-    if (!dataUrl) return;
-    const folder = getScreenshotFolder();
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filepath = path.join(folder, `screenshot-${timestamp}.png`);
-    try {
-      fs.writeFileSync(filepath, dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
-      log.info('Screenshot saved:', filepath);
-      // Play screenshot sound if enabled
-      if (appSettings.screenshotSoundEnabled !== false) {
-        const vol = appSettings.screenshotSoundVolume !== undefined ? appSettings.screenshotSoundVolume : 80;
-        const custom = appSettings.screenshotCustomSoundPath;
-        let soundPath = null;
-        if (custom && custom.trim() !== '') {
-          try { if (fs.existsSync(custom)) soundPath = custom; } catch(e) {}
-        }
-        if (!soundPath) {
-          const bloomPaths = [
-            path.join(__dirname, 'assets', 'sound', 'Bloom.ogg.mp3'),
-            path.join(__dirname, '..', 'assets', 'sound', 'Bloom.ogg.mp3'),
-            path.join(__dirname, 'src', 'assets', 'sound', 'Bloom.ogg.mp3'),
-          ];
-          if (process.resourcesPath) {
-            bloomPaths.push(path.join(process.resourcesPath, 'assets', 'sound', 'Bloom.ogg.mp3'));
-            bloomPaths.push(path.join(process.resourcesPath, 'app', 'assets', 'sound', 'Bloom.ogg.mp3'));
-            bloomPaths.push(path.join(process.resourcesPath, 'app', 'src', 'assets', 'sound', 'Bloom.ogg.mp3'));
-          }
-          soundPath = bloomPaths.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } }) || null;
-        }
-        if (soundPath && mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-          log.info('Playing screenshot sound:', soundPath, 'vol:', vol);
-          mainWindow.webContents.send('play-alert-sound', { customSoundPath: soundPath, soundVolume: vol });
-        } else if (!soundPath) {
-          log.warn('Screenshot sound not found');
-        }
+// Canvas-based screenshot save (from gameview-preload.js canvas capture)
+ipcMain.on('save-screenshot', (event, dataUrl) => {
+  if (!dataUrl) return;
+  const folder = getScreenshotFolder();
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filepath = path.join(folder, `screenshot-${timestamp}.png`);
+  try {
+    fs.writeFileSync(filepath, dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64');
+    log.info('Screenshot saved:', filepath);
+    // Play screenshot sound if enabled
+    if (appSettings.screenshotSoundEnabled !== false) {
+      const vol = appSettings.screenshotSoundVolume !== undefined ? appSettings.screenshotSoundVolume : 80;
+      const custom = appSettings.screenshotCustomSoundPath;
+      let soundPath = null;
+      if (custom && custom.trim() !== '') {
+        try { if (fs.existsSync(custom)) soundPath = custom; } catch(e) {}
       }
-    } catch (e) { log.error('Failed to save screenshot:', e); }
-  });
+      if (!soundPath) {
+        const bloomPaths = [
+          path.join(__dirname, 'assets', 'sound', 'Bloom.ogg.mp3'),
+          path.join(__dirname, '..', 'assets', 'sound', 'Bloom.ogg.mp3'),
+          path.join(__dirname, 'src', 'assets', 'sound', 'Bloom.ogg.mp3'),
+        ];
+        if (process.resourcesPath) {
+          bloomPaths.push(path.join(process.resourcesPath, 'assets', 'sound', 'Bloom.ogg.mp3'));
+          bloomPaths.push(path.join(process.resourcesPath, 'app', 'assets', 'sound', 'Bloom.ogg.mp3'));
+          bloomPaths.push(path.join(process.resourcesPath, 'app', 'src', 'assets', 'sound', 'Bloom.ogg.mp3'));
+        }
+        soundPath = bloomPaths.find(p => { try { return fs.existsSync(p); } catch(e) { return false; } }) || null;
+      }
+      if (soundPath && mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        log.info('Playing screenshot sound:', soundPath, 'vol:', vol);
+        mainWindow.webContents.send('play-alert-sound', { customSoundPath: soundPath, soundVolume: vol });
+      } else {
+        log.warn('Screenshot sound not found');
+      }
+    }
+  } catch (e) { log.error('Failed to save screenshot:', e); }
+});
   ipcMain.on('capture-screenshot', () => takeScreenshot());
 
   let currentScreenshotAccelerator = null;
@@ -1007,6 +1065,16 @@ app.whenReady().then(() => {
   }
   function scheduleAdventureCapture() {
     if (!appSettings.adventureCaptureEnabled) return;
+    
+    // Check if AFK timer is at zero or negative (>= 90 seconds elapsed = 0:00 or negative display)
+    // If so, don't schedule adventure capture
+    const afkTimerAtZeroOrBelow = (backgroundTimerRunning && backgroundTimerMode === 'afk' && backgroundTimerSeconds >= 90) ||
+                                   (gameClickTimerRunning && gameClickTimerSeconds >= 90);
+    if (afkTimerAtZeroOrBelow) {
+      console.log('AFK timer at zero or negative - pausing adventure capture');
+      return;
+    }
+    
     let delay;
     if (appSettings.randomInterval) {
       const baseInterval = (appSettings.captureInterval || 60) * 1000;
@@ -1016,6 +1084,13 @@ app.whenReady().then(() => {
     adventureCaptureTimer = setTimeout(() => { captureAdventureScreenshot(); scheduleAdventureCapture(); }, delay);
   }
   function captureAdventureScreenshot() {
+    // Don't capture if AFK timer is at zero or negative
+    const afkTimerAtZeroOrBelow = (backgroundTimerRunning && backgroundTimerMode === 'afk' && backgroundTimerSeconds >= 90) ||
+                                   (gameClickTimerRunning && gameClickTimerSeconds >= 90);
+    if (afkTimerAtZeroOrBelow) {
+      console.log('AFK timer at zero or negative - skipping this capture');
+      return;
+    }
     const mainPV = primaryViews.find(p => p.id === currentTab);
     if (!mainPV || !mainPV.view || !mainPV.view.webContents) return;
     // Use canvas-based capture via preload so we get only the game canvas
@@ -1058,6 +1133,11 @@ app.whenReady().then(() => {
     // Send channel state when youtube.html loads
     if (currentNavViewName === 'youtube') {
       navView.webContents.send('creator-channels-from-main', appSettings.creatorChannels || []);
+    }
+    // Tell the nav view what display mode it should render in
+    if (navView && !navView.webContents.isDestroyed()) {
+      navView.webContents.send('nav-panel-mode', navPanelMode);
+      navView.webContents.send('chat-toggled', chatVisible, chatHeightValue);
     }
   });
   mainWindow.contentView.addChildView(navView);
@@ -1181,6 +1261,9 @@ app.whenReady().then(() => {
   mainWindow.webContents.send('update-tab-title', 'main', startWorldTitle);
   scheduleWindowManagerReflow();
   mainWindow.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+  if (navView && !navView.webContents.isDestroyed()) {
+    navView.webContents.send('chat-toggled', chatVisible, chatHeightValue);
+  }
 
   ['resize', 'resized', 'show', 'focus', 'restore', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].forEach(eventName => {
     mainWindow.on(eventName, () => scheduleWindowManagerReflow());
@@ -1217,6 +1300,13 @@ app.whenReady().then(() => {
       updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     }
 
+    // When game-click timer reaches zero (90 seconds), cancel adventure capture
+    if (gameClickTimerSeconds >= 90 && adventureCaptureTimer) {
+      clearTimeout(adventureCaptureTimer);
+      adventureCaptureTimer = null;
+      console.log('Game-click timer reached 0:00 - cancelling pending adventure capture');
+    }
+
     const safeThreshold = Math.max(1, Math.min(89, parseInt(alertThreshold, 10) || 10));
     const thresholdTime = 90 - safeThreshold;
     if (!gameClickAlertTriggeredInCycle && gameClickTimerSeconds >= thresholdTime && gameClickTimerSeconds < 90) {
@@ -1234,7 +1324,12 @@ app.whenReady().then(() => {
       console.log('Game-click timer reset to 0');
       if (navView && navView.webContents) navView.webContents.send('game-click-timer-tick', 0);
       if (!backgroundTimerRunning) updateWindowTitleWithTimer(true, 0, 'afk', 90);
+      // Stop alert sound when timer is reset
+      stopAlertSound();
+      // Resume adventure capture when timer is reset
+      updateAdventureCapture();
     } else if (afkGameClick) {
+      stopAlertSound();
       startGameClickTimer();
     }
   }
@@ -1251,6 +1346,7 @@ app.whenReady().then(() => {
   // ── Hover ENTER / UN-IDLE — pause timers, show 1:30 frozen ───────────────
   function pauseTimerForHover() {
     if (!afkGameClick || !afkHover) return;
+    stopAlertSound();
 
     // Stop & reset both timers (do NOT restart yet)
     if (gameClickTimerInterval) { clearInterval(gameClickTimerInterval); gameClickTimerInterval = null; }
@@ -1278,6 +1374,8 @@ app.whenReady().then(() => {
   // ── Hover IDLE — mouse stopped moving inside canvas: reset to 1:30 and START ─
   function idleInCanvas() {
     if (!afkGameClick || !afkHover) return;
+    stopAlertSound();
+
     // Whether paused or not, restart timers fresh from 0
     if (gameClickTimerInterval) clearInterval(gameClickTimerInterval);
     gameClickTimerSeconds = 0;
@@ -1308,6 +1406,7 @@ app.whenReady().then(() => {
   // ── Hover LEAVE — mouse left canvas: reset to 1:30 and START countdown ─────
   function resumeTimerFromHover() {
     if (!afkGameClick || !afkHover) return;
+    stopAlertSound();
     hoverPaused = false;
 
     // Reset & restart both timers from 0
@@ -1341,6 +1440,15 @@ app.whenReady().then(() => {
     if (!soundAlert) return;
     if (customSoundPath && customSoundPath.trim() !== '') { playCustomAlertSound(customSoundPath); return; }
     playDefaultPackagedSound();
+  }
+
+  function stopAlertSound() {
+    if (mainWindow && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('stop-alert-sound');
+    }
+    if (navView && navView.webContents && !navView.webContents.isDestroyed()) {
+      navView.webContents.send('stop-alert-sound');
+    }
   }
 
   function playDefaultPackagedSound() {
@@ -1440,6 +1548,12 @@ app.whenReady().then(() => {
     updateWindowTitleWithTimer(backgroundTimerRunning, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
 
     if (backgroundTimerMode === 'afk') {
+      // When AFK timer reaches zero (90 seconds), cancel adventure capture
+      if (backgroundTimerSeconds >= 90 && adventureCaptureTimer) {
+        clearTimeout(adventureCaptureTimer);
+        adventureCaptureTimer = null;
+        console.log('AFK timer reached 0:00 - cancelling pending adventure capture');
+      }
       const thresholdTime = 90 - alertThreshold;
       if (!backgroundAlertTriggered && backgroundTimerSeconds >= thresholdTime) {
         backgroundAlertTriggered = true;
@@ -1504,6 +1618,12 @@ app.whenReady().then(() => {
       navView.webContents.send('background-timer-tick', { seconds: 0, mode: backgroundTimerMode, countdownTime: backgroundCountdownTime });
     }
     updateWindowTitleWithTimer(backgroundTimerRunning, 0, backgroundTimerMode, backgroundCountdownTime);
+    // Stop alert sound when timer is reset
+    stopAlertSound();
+    // Resume adventure capture when timer is reset (for AFK mode)
+    if (backgroundTimerMode === 'afk') {
+      updateAdventureCapture();
+    }
   }
 
   function getBackgroundTimerState() {
@@ -1548,6 +1668,8 @@ app.whenReady().then(() => {
       gameClickAlertTriggeredInCycle = false;
       console.log('Game-click timer manually reset to 0');
       if (navView && navView.webContents) navView.webContents.send('game-click-timer-tick', 0);
+      // Stop alert sound when timer is reset
+      stopAlertSound();
     }
   });
 
@@ -1785,6 +1907,46 @@ app.whenReady().then(() => {
 
   ipcMain.on('switch-nav-view', (event, view) => {
     currentNavViewName = view || 'nav';
+
+    const builtInToolViews = new Set(['worldswitcher', 'hiscores', 'stopwatch', 'youtube']);
+    if (builtInToolViews.has(view) && navPanelMode === 'strip') {
+      // Temporarily expand the panel AND grow the window to the right so
+      // the primary view (game canvas) does not shrink.
+      navPanelPrevMode = 'strip';
+      const bounds = mainWindow.getBounds();
+      const { screen } = require('electron');
+      const display = screen.getDisplayMatching(bounds);
+      const delta = NAV_PANEL_WIDTH - NAV_PANEL_STRIP_WIDTH;
+      const newWidth = bounds.width + delta;
+      let newX = bounds.x;
+      const newRight = bounds.x + newWidth;
+      const displayRight = display.workArea.x + display.workArea.width;
+      if (newRight > displayRight) {
+        // Shift left as needed but prefer to expand to the right
+        newX = Math.max(display.workArea.x, bounds.x - (newRight - displayRight));
+      }
+      try { mainWindow.setBounds({ width: newWidth, height: bounds.height, x: newX, y: bounds.y }); } catch (e) {}
+      navPanelMode = 'expanded';
+      scheduleWindowManagerReflow();
+    } else if (view === 'nav' && navPanelPrevMode === 'strip') {
+      // Revert window width back to strip size (shrink from expanded)
+      const bounds = mainWindow.getBounds();
+      const { screen } = require('electron');
+      const display = screen.getDisplayMatching(bounds);
+      const delta = NAV_PANEL_WIDTH - NAV_PANEL_STRIP_WIDTH;
+      const newWidth = Math.max(800, bounds.width - delta);
+      let newX = bounds.x;
+      const newRight = newX + newWidth;
+      const displayRight = display.workArea.x + display.workArea.width;
+      if (newRight > displayRight) {
+        newX = Math.max(display.workArea.x, bounds.x - (newRight - displayRight));
+      }
+      try { mainWindow.setBounds({ width: newWidth, height: bounds.height, x: newX, y: bounds.y }); } catch (e) {}
+      navPanelMode = 'strip';
+      navPanelPrevMode = null;
+      scheduleWindowManagerReflow();
+    }
+
     switch (view) {
       case 'worldswitcher': navView.webContents.loadFile(path.join(__dirname, '/navitems/worldswitcher.html')); break;
       case 'hiscores':      navView.webContents.loadFile(path.join(__dirname, '/navitems/hiscores.html')); break;

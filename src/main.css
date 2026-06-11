@@ -94,6 +94,81 @@ body {
     paint-order: stroke fill;
 }
 
+.strip-mode .nav-button span {
+    display: none;
+}
+
+.strip-mode .nav-button {
+    justify-content: flex-start;
+    padding-left: 12px;
+    padding-right: 46px;
+    min-height: 42px;
+}
+
+.strip-mode .nav-button .nav-icon {
+    margin-right: 0;
+}
+
+.strip-mode .nav-button.link {
+    padding-right: 48px;
+}
+
+.strip-mode .nav-button .open-external {
+    right: 6px;
+}
+
+.strip-mode .nav-buttons-top {
+    flex-direction: column;
+    align-items: center;
+}
+
+.strip-mode .nav-buttons-top .nav-button {
+    width: 100%;
+    max-width: 100px;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.strip-mode .nav-buttons-top .nav-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.strip-mode #nav-panel-strip-toggle {
+    background: #51cf66 !important;
+}
+
+.strip-mode .nav,
+.strip-mode body {
+    overflow-x: hidden;
+}
+
+/* Center specific built-in tool icons in strip mode */
+.strip-mode .nav-button[data-nav-id="worldswitcher"],
+.strip-mode .nav-button[data-nav-id="chat"],
+.strip-mode .nav-button[data-nav-id="stopwatch"],
+.strip-mode .nav-button[data-nav-id="hiscores"] {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+.strip-mode .nav-button[data-nav-id="worldswitcher"] .nav-icon,
+.strip-mode .nav-button[data-nav-id="chat"] .nav-icon,
+.strip-mode .nav-button[data-nav-id="stopwatch"] .nav-icon,
+.strip-mode .nav-button[data-nav-id="hiscores"] .nav-icon {
+    margin-right: 0 !important;
+    display: block !important;
+}
+
+/* Ensure any external control doesn't overlap centered icons */
+.strip-mode .nav-button[data-nav-id="worldswitcher"] .open-external,
+.strip-mode .nav-button[data-nav-id="chat"] .open-external,
+.strip-mode .nav-button[data-nav-id="stopwatch"] .open-external,
+.strip-mode .nav-button[data-nav-id="hiscores"] .open-external {
+    right: 6px;
+}
+
 .nav-button.special-link {
     background: linear-gradient(135deg, #4a4a4a 0%, #2a2a2a 100%);
     border-color: #666;
@@ -103,6 +178,31 @@ body {
 .nav-button.special-link:hover {
     background: linear-gradient(135deg, #5a5a5a 0%, #3a3a3a 100%);
     border-color: #777;
+}
+
+.nav-button[data-nav-id="chat"].chat-open {
+    background: linear-gradient(135deg, #2d6a22 0%, #1f5019 100%);
+    border-color: #1f5b17;
+}
+
+.nav-button[data-nav-id="chat"].chat-open:hover {
+    background: linear-gradient(135deg, #3f7c2f 0%, #2f6421 100%);
+}
+
+.nav-button[data-nav-id="chat"].chat-closed {
+    background: linear-gradient(135deg, #7a1d1d 0%, #601515 100%);
+    border-color: #7f1515;
+}
+
+.nav-button[data-nav-id="chat"].chat-closed:hover {
+    background: linear-gradient(135deg, #8f2424 0%, #6a1a1a 100%);
+}
+
+.nav-button .chat-state {
+    font-size: 12px;
+    opacity: 0.85;
+    margin-left: 6px;
+    color: #dcdcdc;
 }
 
 /* Screenshot buttons container */
