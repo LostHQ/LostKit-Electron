@@ -12,18 +12,36 @@
     font-style: normal;
 }
 
+/* Small print gets the plain face. The bold face is the same typeface with the
+   strokes thickened, and at 10-11px those strokes close up the counters and the
+   line turns to mush. Registered as one family with both weights, so a <b> or a
+   bold value inside small print still lands on the real bold face — leaving it
+   to the browser would produce a smeared synthetic bold, which is worse than
+   what we set out to fix. */
 @font-face {
-    font-family: 'RS-Quill';
-    src: url('assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+    font-family: 'RS-Small';
+    src: url('assets/fonts/RuneScape-Plain-12.otf') format('opentype');
     font-weight: normal;
     font-style: normal;
-    font-size: 16px;
+}
+
+@font-face {
+    font-family: 'RS-Small';
+    src: url('assets/fonts/RuneScape-Bold-12.otf') format('opentype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+:root {
+    /* Everything at normal reading size stays bold, so the client's own look is
+       untouched. To undo the experiment: set this back to 'RS-Bold'. */
+    --font-small: 'RS-Small', sans-serif;
 }
 
 body {
     margin: 0;
     padding: 0;
-    font-family: 'RS-Quill';
+    font-family: 'RS-Bold';
     background: #222222;
     color: #f0e68c;
     scrollbar-width: none;
@@ -32,6 +50,15 @@ body {
 
 ::-webkit-scrollbar {
     display: none;
+}
+
+/* Small print — see --font-small above. Kept in one block per stylesheet so
+   the experiment can be judged, extended or dropped in one place. */
+.world-latency,
+.stat-next,
+.stopwatch-panel .range-value,
+.stopwatch-panel .mode-btn {
+    font-family: var(--font-small) !important;
 }
 
 .nav {
@@ -381,6 +408,48 @@ button:active, .btn:active {
     background: linear-gradient(to bottom, #4a4a4a, #3a3a3a);
 }
 
+/* Tool icon shown in front of the tab name */
+.tab-icon {
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+    flex-shrink: 0;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+
+.tab-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+
+/* Drag to reorder / drag out to detach */
+body.tab-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.tab.dragging {
+    transition: none;   /* .tab animates "all" — that would lag the drag */
+    z-index: 20;
+    opacity: 0.92;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+    cursor: grabbing;
+}
+
+/* A detached window is hovering here and will dock if released */
+#tabs.drop-target {
+    background: linear-gradient(to bottom, #4a3a10, #2a2008);
+    box-shadow: inset 0 0 0 2px #c8941c, inset 0 0 12px rgba(200, 148, 28, 0.5);
+}
+
+.tab.detaching {
+    border: 1px dashed #c8941c;
+    background: rgba(139, 105, 20, 0.35);
+    opacity: 0.75;
+}
+
 .close {
     margin-left: 2px;
     padding: 2px 3px;
@@ -563,7 +632,7 @@ button:active, .btn:active {
     border: 2px inset #8b6914;
     border-radius: 4px;
     color: #f0e68c;
-    font-family: 'RS-Quill';
+    font-family: 'RS-Bold';
     font-size: 14px;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
     width: 100%;
@@ -592,7 +661,7 @@ button:active, .btn:active {
     font-size: 14px;
     text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
     transition: all 0.1s ease;
-    font-family: 'RS-Quill';
+    font-family: 'RS-Bold';
 }
 
 .lookup-btn:hover {

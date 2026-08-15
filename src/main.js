@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, globalShortcut, nativeImage, Menu } = require('electron');
 const { autoUpdater } = require('electron-updater');
 
 const log = require('electron-log');
@@ -173,14 +173,19 @@ let appSettings = {
   soundManagerWindow: { width: 450, height: 500 }, notesWindow: { width: 500, height: 600 },
   screenshotFolder: '', screenshotKeybind: '',
   screenshotSoundEnabled: true, screenshotSoundVolume: 80, screenshotCustomSoundPath: '',
-  appFont: 'quill',
   creatorChannels: [],
   creatorNotifSettings: { notifLive: true, notifVideo: true, pollIntervalMs: 30000 },
   hiddenNavButtons: [],
   streamWindow: { width: 960, height: 600, x: null, y: null, pinned: false, chatOpen: false, videoHidden: false, prevWinWidth: 960 },
   updaterEnabled: true,
   skippedVersion: '',
-  alwaysOnTop: false
+  alwaysOnTop: false,
+  // Tool tabs open at last quit, in strip order, restored on next launch.
+  // activeTab is an index into openTabs, or 'main' for the game view tab.
+  openTabs: [], activeTab: 'main',
+  // Market watchlist: items being tracked, and whether matches raise a desktop
+  // notification (the panel always shows them either way).
+  marketWatches: [], marketNotifyEnabled: true, marketPollIntervalMs: 300000
 };
 
 function loadSettings() {
@@ -195,18 +200,49 @@ function loadSettings() {
       if (appSettings.externalZoom) for (const url in appSettings.externalZoom) appSettings.externalZoom[url] = snapToZoomStep(appSettings.externalZoom[url]);
       log.info('Settings loaded from', settingsPath);
     }
-  } catch (e) { log.error('Failed to load settings:', e); }
+  } catch (e) {
+    log.error('Failed to load settings:', e);
+    // Keep the unreadable file instead of silently overwriting it on the next
+    // save — it's the only copy of everything the user configured.
+    try {
+      if (fs.existsSync(settingsPath)) {
+        const backup = settingsPath + '.corrupt';
+        fs.copyFileSync(settingsPath, backup);
+        log.error('Unreadable settings file backed up to', backup);
+      }
+    } catch (e2) {}
+  }
 }
 
+// Atomic write: writing straight over the settings file means a crash or power
+// cut mid-write leaves a truncated file and resets every setting there is.
+// Write alongside it, then rename — rename is atomic on NTFS and POSIX alike.
 function saveSettings() {
-  try { fs.writeFileSync(settingsPath, JSON.stringify(appSettings, null, 2), 'utf8'); }
-  catch (e) { log.error('Failed to save settings:', e); }
+  const json = JSON.stringify(appSettings, null, 2);
+  const tmpPath = settingsPath + '.tmp';
+  try {
+    fs.writeFileSync(tmpPath, json, 'utf8');
+    fs.renameSync(tmpPath, settingsPath);
+  } catch (e) {
+    log.error('Atomic settings write failed, falling back to direct write:', e);
+    try { fs.writeFileSync(settingsPath, json, 'utf8'); }
+    catch (e2) { log.error('Failed to save settings:', e2); }
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e3) {}
+  }
 }
 
 function saveSettingsDebounced() {
   if (saveSettingsDebounced.timer) clearTimeout(saveSettingsDebounced.timer);
 
   saveSettingsDebounced.timer = setTimeout(saveSettings, 500);
+}
+
+// Writes pending debounced changes right now. On quit the process dies with the
+// 500ms timer still pending, so anything changed in the last half second —
+// window bounds, the tab list, a zoom step — would be lost without this.
+function flushSettings() {
+  if (saveSettingsDebounced.timer) { clearTimeout(saveSettingsDebounced.timer); saveSettingsDebounced.timer = null; }
+  saveSettings();
 }
 
 // ── Always-on-top ────────────────────────────────────────────────────────────
@@ -379,6 +415,302 @@ async function pollCreatorsBackground() {
     navView.webContents.send('creator-channels-updated', appSettings.creatorChannels);
 }
 
+// ── Market watchlist ─────────────────────────────────────────────────────────
+// Watches player listings on markets.lostcity.rs and notifies when one lands in
+// the price range you asked for. Polling lives here rather than in the panel so
+// alerts still fire while the panel is closed — same shape as creator polling.
+//
+// markets.lostcity.rs is an Inertia app: the same URLs return JSON when asked
+// with the X-Inertia headers, and fall back to HTML with the payload embedded in
+// data-page. The version hash changes whenever the site deploys, so we cache it
+// and re-read it from the HTML whenever a request comes back stale.
+const MARKET_ORIGIN = 'https://markets.lostcity.rs';
+const MARKET_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) LostKit';
+let marketInertiaVersion = null;
+let marketPollTimer = null;
+let watchlistWindow = null;
+let compareWindow = null;
+let priceHistoryWindow = null;
+
+function decodeHtmlEntities(s) {
+  return s.replace(/&quot;/g, '"').replace(/&#039;/g, "'")
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+async function marketFetchPage(path) {
+  const url = MARKET_ORIGIN + path;
+  if (marketInertiaVersion) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': MARKET_UA, 'X-Inertia': 'true',
+                   'X-Inertia-Version': marketInertiaVersion, 'Accept': 'text/html, application/xhtml+xml' }
+      });
+      if (res.ok && (res.headers.get('content-type') || '').includes('json')) return await res.json();
+    } catch (e) { /* fall through to the HTML route */ }
+  }
+  // HTML route: works regardless of the version hash, and refreshes our copy.
+  // Note that either route costs the site one request and nothing else — we read
+  // the embedded data and never fetch the stylesheets, scripts or images a real
+  // page view would. See the note above startMarketPolling for what that adds up
+  // to across a user base.
+  const res = await fetch(url, { headers: { 'User-Agent': MARKET_UA } });
+  if (!res.ok) throw new Error(`market request failed: ${res.status}`);
+  const html = await res.text();
+  const m = html.match(/data-page="([^"]*)"/);
+  if (!m) throw new Error('market payload not found');
+  const page = JSON.parse(decodeHtmlEntities(m[1]));
+  if (page.version) marketInertiaVersion = page.version;
+  return page;
+}
+
+// A listing pays in a bundle of items, not a number. Coins are the only thing
+// that reduces to a comparable price; barter offers are surfaced in the panel
+// but never threshold-matched, because "4600 cosmic runes" isn't a gp value.
+// Per-unit price of a lot. Bulk offers — "30,000 coins for the lot of 100,000
+// flax" — work out below 1gp each, and rounding those to a whole number turned
+// a real price into 0, which then plotted as a crash to the floor. Small values
+// keep their fraction; a genuine zero is no price at all.
+function perUnitPrice(coinTotal, perEach, lotQty) {
+  const qty = Math.max(1, lotQty || 1);
+  // "For each item:" is already per-unit; "For:" is the price of the whole lot.
+  const raw = perEach ? coinTotal : coinTotal / qty;
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw < 10 ? Math.round(raw * 1000) / 1000 : Math.round(raw);
+}
+
+function listingUnitPrice(listing) {
+  const offer = listing.offers && listing.offers[0];
+  if (!offer || !Array.isArray(offer.items) || offer.items.length !== 1) return null;
+  const paid = offer.items[0];
+  if (!paid.item || paid.item.slug !== 'coins') return null;
+  return perUnitPrice(paid.quantity, /each/i.test(offer.title || ''), listing.quantity);
+}
+
+function describeOffer(listing) {
+  const offer = listing.offers && listing.offers[0];
+  if (!offer || !Array.isArray(offer.items) || !offer.items.length) return 'no offer';
+  return offer.items.map(i => `${i.quantity.toLocaleString()} ${i.item ? i.item.name : '?'}`).join(' + ');
+}
+
+function isListingLive(l) {
+  return !l.soldAt && !l.deletedAt && !l.pausedAt;
+}
+
+// ── Placeholder prices ──────────────────────────────────────────────────────
+// Some listings put a token number in the coin field and the real one in the
+// notes: a santa hat wanted for "169 Coins", notes "169m offer pm for list".
+// Taken at face value one of those drags an average through the floor, and to a
+// watch it looks like the deal of the century. So anything wildly out of step
+// with the going rate is checked against its notes before it is believed, and
+// if the notes do not explain it, it is kept out of the numbers entirely.
+
+const OUTLIER_FACTOR = 20;      // 20x off the going rate is not a real price
+
+// Amounts written the way players write them: 169m, 1.5b, 250k, "169 mil".
+function noteAmounts(notes) {
+  const out = [];
+  if (!notes) return out;
+  // 13,000 -> 13000, so a thousands separator is not read as a decimal point.
+  const text = String(notes).replace(/(\d),(?=\d{3}\b)/g, '$1');
+  const re = /(\d+(?:\.\d+)?)\s*(bil(?:lion)?|mil(?:lion)?|b|m|k)?\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const mantissa = parseFloat(m[1]);
+    if (!Number.isFinite(mantissa) || mantissa <= 0) continue;
+    const unit = (m[2] || '').toLowerCase().charAt(0);
+    const mult = unit === 'b' ? 1e9 : unit === 'm' ? 1e6 : unit === 'k' ? 1e3 : 1;
+    out.push({ value: Math.round(mantissa * mult), mantissa, scaled: !!unit });
+  }
+  return out;
+}
+
+// The going rate to judge listings against. A median needs a real sample to
+// mean anything, so below three prices we take whatever context the caller can
+// give us — and with none, we decline to judge rather than guess.
+function referencePrice(prices, ...fallbacks) {
+  const clean = prices.filter(p => p != null && p > 0);
+  if (clean.length >= 3) {
+    const sorted = [...clean].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+  for (const f of fallbacks) if (f != null && f > 0) return f;
+  return null;
+}
+
+// Judges one price. Returns what to use and how it was arrived at:
+//   ok      — believed as listed
+//   notes   — the coin field was a placeholder; the real number came from notes
+//   suspect — far off the market and the notes do not explain it, so it must be
+//             kept out of averages and must never trigger an alert
+function screenPrice(price, notes, reference) {
+  if (price == null) return { price: null, source: 'ok' };
+  if (reference == null || reference <= 0) return { price, source: 'ok' };
+  const plausible = (v) => v != null && v >= reference / OUTLIER_FACTOR && v <= reference * OUTLIER_FACTOR;
+  if (plausible(price)) return { price, source: 'ok' };
+
+  const amounts = noteAmounts(notes);
+  // Strongest tell by far: the notes repeat the listed digits with the
+  // magnitude that was left off — "169 Coins" alongside "169m offer".
+  const sameDigits = amounts.find(a =>
+    a.scaled && Math.round(a.mantissa) === Math.round(price) && plausible(a.value));
+  if (sameDigits) return { price: sameDigits.value, source: 'notes' };
+  // Otherwise believe the notes only if exactly one number in them lands in the
+  // right neighbourhood. Anything vaguer is a guess, and a wrong guess here is
+  // worse than admitting we don't know.
+  const fits = amounts.filter(a => a.scaled && plausible(a.value));
+  if (fits.length === 1) return { price: fits[0].value, source: 'notes' };
+  return { price, source: 'suspect' };
+}
+
+// A watch on "buy" means the user wants to buy, so it scans other people's
+// SELL listings — and vice versa. Getting this backwards is the easiest way to
+// make the whole feature useless, so it is stated once, here.
+function listingTypeWatched(direction) { return direction === 'buy' ? 'sell' : 'buy'; }
+
+function priceInRange(price, watch) {
+  if (price == null) return false;
+  if (watch.min != null && price < watch.min) return false;
+  if (watch.max != null && price > watch.max) return false;
+  return true;
+}
+
+// How far outside the range a listing may sit and still be worth showing. Set a
+// max of 10m on a dragon chainbody and you do not want to read about the 40m
+// ones — but you probably do want to see the 11m one.
+function priceWithinDeviation(price, watch) {
+  if (price == null) return false;
+  const dev = Number.isFinite(watch.deviation) ? watch.deviation : 20;
+  // With no bounds at all there is nothing to deviate from — show everything.
+  if (watch.min == null && watch.max == null) return true;
+  const factor = 1 + Math.max(0, dev) / 100;
+  if (watch.max != null && price > watch.max * factor) return false;
+  if (watch.min != null && price < watch.min / factor) return false;
+  return true;
+}
+
+async function refreshMarketWatch(watch) {
+  // An item page returns one side of the book at a time and defaults to buy
+  // listings, so the side we want has to be asked for explicitly.
+  const wanted = listingTypeWatched(watch.direction);
+  const page = await marketFetchPage(`/items/${encodeURIComponent(watch.slug)}?type=${wanted}`);
+  const all = (page.props && page.props.listings && page.props.listings.data) || [];
+  const rows = all
+    .filter(l => l.type === wanted && isListingLive(l))
+    .map(l => ({
+      id: l.id,
+      username: l.username,
+      quantity: l.quantity,
+      price: listingUnitPrice(l),
+      offer: describeOffer(l),
+      notes: l.notes || '',
+      updatedAt: l.updatedAt
+    }));
+
+  // Placeholder prices are screened before anything is sorted, matched or
+  // alerted on — an unscreened "169 Coins" on a santa hat is both the cheapest
+  // listing on the page and a notification saying you just found one for 169gp.
+  // With too few listings to form a median, the range the user asked for is the
+  // best statement of what they think the item is worth.
+  const midpoint = watch.min != null && watch.max != null ? (watch.min + watch.max) / 2 : null;
+  const reference = referencePrice(rows.map(r => r.price), midpoint, watch.max, watch.min);
+  rows.forEach(r => {
+    const screened = screenPrice(r.price, r.notes, reference);
+    r.suspect = screened.source === 'suspect';
+    r.priceFromNotes = screened.source === 'notes';
+    r.price = screened.price;
+  });
+
+  // Best first: cheapest when buying, highest paying when selling.
+  const priced = rows.filter(r => r.price != null && !r.suspect);
+  priced.sort((a, b) => watch.direction === 'buy' ? a.price - b.price : b.price - a.price);
+
+  // Only listings near the asked-for price are shown; the rest are counted so
+  // you can still tell the difference between "nothing close" and "nothing".
+  const near = priced.filter(r => priceWithinDeviation(r.price, watch));
+  watch.listings = near.slice(0, 8);
+  watch.farCount = priced.length - near.length;
+  watch.suspectCount = rows.filter(r => r.suspect).length;
+  watch.barterCount = rows.length - priced.length - watch.suspectCount;
+  watch.best = priced.length ? priced[0].price : null;
+  watch.matches = priced.filter(r => priceInRange(r.price, watch));
+  watch.lastChecked = Date.now();
+  watch.error = null;
+  return watch;
+}
+
+async function pollMarketWatches({ notify = true } = {}) {
+  const watches = appSettings.marketWatches;
+  if (!watches || !watches.length) return;
+  for (const watch of watches) {
+    try {
+      const before = new Set(watch.notifiedListingIds || []);
+      await refreshMarketWatch(watch);
+      if (notify && appSettings.marketNotifyEnabled !== false) {
+        const fresh = watch.matches.filter(m => !before.has(m.id));
+        if (fresh.length) {
+          const best = fresh[0];
+          const verb = watch.direction === 'buy' ? 'selling' : 'buying';
+          fireMarketNotif(
+            `${watch.name} — ${best.price.toLocaleString()} gp`,
+            `${best.username} is ${verb} ${best.quantity.toLocaleString()}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`,
+            watch.slug
+          );
+        }
+      }
+      // Only remember ids that still match, so a listing that leaves the range
+      // and comes back later alerts again.
+      watch.notifiedListingIds = watch.matches.map(m => m.id);
+    } catch (e) {
+      watch.error = e.message;
+      log.warn('Market watch failed:', watch.slug, e.message);
+    }
+  }
+  saveSettingsDebounced();
+  broadcastMarketWatches();
+}
+
+// The panel can be open in the nav column, in its own window, or both.
+function broadcastMarketWatches() {
+  if (currentNavViewName === 'watchlist' && navView && !navView.webContents.isDestroyed())
+    navView.webContents.send('market-watches-updated', appSettings.marketWatches);
+  if (watchlistWindow && !watchlistWindow.isDestroyed())
+    watchlistWindow.webContents.send('market-watches-updated', appSettings.marketWatches);
+}
+
+function fireMarketNotif(title, body, slug) {
+  const { Notification } = require('electron');
+  if (!Notification.isSupported()) return;
+  const notif = new Notification({ title, body: body || '', silent: false });
+  notif.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+    // Open the item's market page as a tab so the offer is one click away.
+    ipcMain.emit('add-tab', null, `${MARKET_ORIGIN}/items/${slug}`, 'Markets', 'assets/market.png');
+  });
+  notif.show();
+}
+
+// How much load does watching actually put on markets.lostcity.rs? Worth having
+// the arithmetic written down, because the answer is reassuring and the question
+// keeps coming back:
+//
+//   one watch = one request every 5 minutes
+//   30 users x 5 watches = 150 requests / 300s = 0.5 requests per second
+//
+// And each of those is cheaper than a person opening the same page in a browser.
+// marketFetchPage pulls the Inertia payload only — no CSS, no scripts, none of
+// the twenty-odd assets a real page view drags along. So the whole background
+// load of a modest user base costs their server about what a couple of people
+// casually clicking around the site would.
+//
+// Which is to say: 5 minutes is not a number to be nervous about. It is worth
+// keeping only so that a user with a lot of watches stays unremarkable in their
+// logs.
+function startMarketPolling() {
+  if (marketPollTimer) clearInterval(marketPollTimer);
+  const interval = appSettings.marketPollIntervalMs || 300000;
+  marketPollTimer = setInterval(() => pollMarketWatches(), interval);
+}
+
 function startCreatorPolling() {
   if (creatorPollTimer) clearInterval(creatorPollTimer);
   const interval = (appSettings.creatorNotifSettings?.pollIntervalMs) || 300000;
@@ -386,65 +718,37 @@ function startCreatorPolling() {
 }
 
 // ── Font injection ────────────────────────────────────────────────────────────
-// Font injection — switches between RS-Quill (default) and RS-Bold.
+// RS-Bold is the interface font throughout — the old Quill option was dropped
+// for being hard to read. This still runs because it also carries the size
+// bumps, and because it has to out-specify the stopwatch panel, which forces
+// font-family: RS-Plain !important on its own elements.
 const FONT_STYLE_ID = '__lk-font-override__';
 
-function buildFontCSS(font) {
-  // Shared rules applied in BOTH font modes:
-  //  - Stopwatch mode-btn: pin to a small explicit size so the generic
-  //    "button { font-size !important }" rule never blows it up.
-  //    Uses higher specificity (.stopwatch-panel .mode-btn) so it wins.
-  //  - Stopwatch bold-weight text (section-title, checkbox labels): given
-  //    the same explicit size in both modes so they look visually consistent
-  //    regardless of which font appearance is chosen.
-  //  - The stopwatch panel forces font-family:RS-Plain !important on its
-  //    elements (higher specificity than body *), so we override it here
-  //    with an equally-specific !important rule when bold mode is active.
-  const sectionSize   = font === 'bold' ? '15px' : '14px'; // matches Bold mode visual weight
-  const checkboxSize  = font === 'bold' ? '13px' : '12px';
-
-  const shared = [
-    // text-align: center ensures Bold glyphs (wider than Plain) stay centred inside the button.
-    // Size/padding are locked in main.css with !important so no injection can resize the box.
+function buildFontCSS() {
+  return [
+    // Deliberately blunt, and it overrides the stylesheets. The panels opt small
+    // print back out with their own !important rules on --font-small — see the
+    // small-print block at the top of watchlist.css.
+    "body, body * { font-family: 'RS-Bold', sans-serif !important; }",
+    ".stopwatch-panel, .stopwatch-panel .mode-indicator, .stopwatch-panel .section-title,",
+    ".stopwatch-panel .setting-row, .stopwatch-panel .setting-row label,",
+    ".stopwatch-panel .range-value, .stopwatch-panel .big-btn, .stopwatch-panel .btn,",
+    ".stopwatch-panel .sound-checkbox-label, .stopwatch-panel .mode-btn {",
+    "  font-family: 'RS-Bold', sans-serif !important; }",
+    // General size bumps (+2px over CSS defaults)
+    "button, .btn, .nav-button, .world-item, .world-title, .lookup-btn, .loading, .stat-row { font-size: 16px !important; }",
+    ".tab, .tab-btn, .nav-buttons-top span { font-size: 15px !important; }",
+    ".world-info strong, .world-players, .world-latency, .setting-row label, .range-value, .status-text, .section-label { font-size: 14px !important; }",
+    ".stat-values, .stat-level, .stat-xp, .stat-rank, .error-message { font-size: 13px !important; }",
+    // Stopwatch mode-btn: pin to a small explicit size so the generic
+    // "button { font-size !important }" rule never blows it up. Higher
+    // specificity (.stopwatch-panel .mode-btn) so it wins.
+    // text-align: center keeps Bold glyphs (wider than Plain) inside the button.
     ".stopwatch-panel .mode-btn { text-align: center !important; }",
     ".stopwatch-panel .mode-indicator { text-align: center !important; }",
-    // Bold-weight stopwatch text: same visual size in both font modes
-    ".stopwatch-panel .section-title { font-size: " + sectionSize + " !important; }",
-    ".stopwatch-panel .sound-checkbox-label, .stopwatch-panel .setting-row label { font-size: " + checkboxSize + " !important; }",
+    ".stopwatch-panel .section-title { font-size: 15px !important; }",
+    ".stopwatch-panel .sound-checkbox-label, .stopwatch-panel .setting-row label { font-size: 13px !important; }",
   ].join("\n");
-
-  if (font === 'bold') {
-    return [
-      // Switch font-family everywhere, then re-override stopwatch panel
-      // which forces RS-Plain !important with higher specificity selectors.
-      "body, body * { font-family: 'RS-Bold', sans-serif !important; }",
-      ".stopwatch-panel, .stopwatch-panel .mode-indicator, .stopwatch-panel .section-title,",
-      ".stopwatch-panel .setting-row, .stopwatch-panel .setting-row label,",
-      ".stopwatch-panel .range-value, .stopwatch-panel .big-btn, .stopwatch-panel .btn,",
-      ".stopwatch-panel .sound-checkbox-label, .stopwatch-panel .mode-btn {",
-      "  font-family: 'RS-Bold', sans-serif !important; }",
-      // General size bumps (+2px over CSS defaults)
-      "button, .btn, .nav-button, .world-item, .world-title, .lookup-btn, .loading, .stat-row { font-size: 16px !important; }",
-      ".tab, .tab-btn, .nav-buttons-top span { font-size: 15px !important; }",
-      ".world-info strong, .world-players, .world-latency, .setting-row label, .range-value, .status-text, .section-label { font-size: 14px !important; }",
-      ".stat-values, .stat-level, .stat-xp, .stat-rank, .error-message { font-size: 13px !important; }",
-      shared,
-    ].join("\n");
-  }
-
-  // Quill: +1px bump across the same elements
-  return [
-    "button, .btn, .nav-button, .world-item, .world-title, .lookup-btn, .loading, .stat-row { font-size: 15px !important; }",
-    ".tab, .tab-btn, .nav-buttons-top span { font-size: 14px !important; }",
-    ".world-info strong, .world-players, .world-latency, .setting-row label, .range-value, .status-text, .section-label { font-size: 13px !important; }",
-    ".stat-values, .stat-level, .stat-xp, .stat-rank, .error-message { font-size: 12px !important; }",
-    shared,
-  ].join("\n");
-}
-
-function buildFontCSSForNavitem(font) {
-  // Navitem windows load main.css via ../ so the same font families are available.
-  return buildFontCSS(font);
 }
 
 function injectFontCSS(wc, css) {
@@ -465,23 +769,10 @@ function injectFontCSS(wc, css) {
   `).catch(() => {});
 }
 
+// isNavitem is kept in the signature because every caller passes it; navitem
+// windows load main.css via ../ so the rules are identical either way.
 function applyFontToView(wc, isNavitem) {
-  const css = isNavitem
-    ? buildFontCSSForNavitem(appSettings.appFont)
-    : buildFontCSS(appSettings.appFont);
-  injectFontCSS(wc, css);
-}
-
-function applyFontToAllViews() {
-  // navView (nav.html + navitems all load here)
-  if (navView && !navView.webContents.isDestroyed())
-    applyFontToView(navView.webContents, true);
-  // main index.html
-  if (mainWindow && !mainWindow.isDestroyed())
-    applyFontToView(mainWindow.webContents, false);
-  // settings popup (loads from navitems/ so uses navitem path — isNavitem: true)
-  if (settingsWindow && !settingsWindow.isDestroyed())
-    applyFontToView(settingsWindow.webContents, true);
+  injectFontCSS(wc, buildFontCSS());
 }
 
 if (require('electron-squirrel-startup')) app.quit();
@@ -594,12 +885,39 @@ let soundManagerWindow = null, notesWindow = null;
 
 const defaultWorldUrl = 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0';
 const defaultWorldTitle = 'W2 HD';
-let tabs = [{ id: 'main', url: defaultWorldUrl, title: defaultWorldTitle }];
+// Icon shown on the unclosable game view tab (the world switcher nav button uses
+// assets/worldswitch.png — a different icon).
+const MAIN_TAB_ICON = 'assets/LostCity.png';
+let tabs = [{ id: 'main', url: defaultWorldUrl, title: defaultWorldTitle, icon: MAIN_TAB_ICON }];
 let tabByUrl = new Map([[defaultWorldUrl, 'main']]);
+// url -> Set<BrowserWindow>: several external windows may share the same URL.
+// Per-URL bounds/zoom are written by whichever window of that URL closes last.
 let externalWindowsByUrl = new Map();
 let currentTab = 'main';
 let chatVisible = true;
 let chatHeightValue = 300;
+
+// ── Tool icons ───────────────────────────────────────────────────────────────
+// Nav buttons pass an icon path relative to src/ (e.g. "assets/forums.png").
+// The same icon identifies a tool everywhere it can appear: in front of the tab
+// title, and as the window icon of a detached / external window.
+function resolveAssetIcon(iconPath) {
+  if (!iconPath || typeof iconPath !== 'string') return null;
+  const rel = iconPath.replace(/^[\\/]+/, '');
+  const full = path.normalize(path.join(__dirname, rel));
+  const assetsRoot = path.normalize(path.join(__dirname, 'assets'));
+  if (!full.startsWith(assetsRoot)) return null;      // keep lookups inside src/assets
+  try { return fs.existsSync(full) ? full : null; } catch (e) { return null; }
+}
+
+function applyWindowIcon(win, iconPath) {
+  const full = resolveAssetIcon(iconPath);
+  if (!full || !win || win.isDestroyed()) return;
+  try {
+    const img = nativeImage.createFromPath(full);
+    if (!img.isEmpty()) win.setIcon(img);
+  } catch (e) { log.warn('Failed to set window icon:', e.message); }
+}
 
 loadSettings();
 chatHeightValue = appSettings.chatHeight || 300;
@@ -692,6 +1010,44 @@ function updateBounds() {
   chatView.setBounds({ x: 0, y: height - chatHeight, width: primaryWidth, height: chatHeight });
   mainWindow.webContents.send('update-resizer', chatHeight);
   scheduleRendererResizeEvents();
+}
+
+// ── Tab strip as a drop target ───────────────────────────────────────────────
+// Where the tab strip sits in screen coordinates, so a window being dragged can
+// tell whether it is over it. The strip spans the content area minus the nav
+// panel, which is painted on top of it. The band is given a little vertical
+// slack because you are aiming with a titlebar, not a cursor tip.
+const TAB_STRIP_HEIGHT = 28;   // matches the tabHeight used in updateBounds()
+const TAB_STRIP_DROP_SLACK = 10;
+
+function getTabStripScreenRect() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return null;
+  const cb = mainWindow.getContentBounds();
+  const navWidth = navPanelMode === 'collapsed'
+    ? 0
+    : (navPanelMode === 'strip' ? NAV_PANEL_STRIP_WIDTH : Math.min(NAV_PANEL_WIDTH, cb.width));
+  return {
+    x: cb.x, y: cb.y,
+    width: Math.max(0, cb.width - navWidth),
+    height: TAB_STRIP_HEIGHT + TAB_STRIP_DROP_SLACK
+  };
+}
+
+function isCursorOverTabStrip() {
+  const rect = getTabStripScreenRect();
+  if (!rect || rect.width <= 0) return false;
+  const { screen } = require('electron');
+  const p = screen.getCursorScreenPoint();
+  return p.x >= rect.x && p.x <= rect.x + rect.width &&
+         p.y >= rect.y && p.y <= rect.y + rect.height;
+}
+
+let tabStripDropTarget = false;
+function setTabStripDropTarget(active) {
+  if (tabStripDropTarget === active) return;
+  tabStripDropTarget = active;
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send('tab-strip-drop-target', active);
 }
 
 function scheduleWindowManagerReflow() {
@@ -792,6 +1148,7 @@ function initDefaultPackagedSoundPath() {
 app.whenReady().then(() => {
   initDefaultPackagedSoundPath();
   startCreatorPolling(); // background polling for creators
+  startMarketPolling();  // background polling for watched market items
 
   if (typeof appSettings.navPanelMode === 'string') {
     navPanelDesiredMode = appSettings.navPanelMode;
@@ -911,6 +1268,9 @@ app.whenReady().then(() => {
     if (navView && !navView.webContents.isDestroyed()) {
       navView.webContents.send('chat-toggled', chatVisible, chatHeightValue);
     }
+    // Reopen the tabs from last quit. Runs here because the tab strip only
+    // exists once index.html has loaded — earlier sends would be dropped.
+    restoreTabs();
     scheduleWindowManagerReflow();
   });
 
@@ -1031,8 +1391,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         createAdventureFolder: appSettings.createAdventureFolder !== false,
         screenshotSoundEnabled: appSettings.screenshotSoundEnabled !== false,
         screenshotSoundVolume: appSettings.screenshotSoundVolume !== undefined ? appSettings.screenshotSoundVolume : 80,
-        screenshotCustomSoundPath: appSettings.screenshotCustomSoundPath || '',
-        appFont: appSettings.appFont || 'quill'
+        screenshotCustomSoundPath: appSettings.screenshotCustomSoundPath || ''
       });
     });
   });
@@ -1679,14 +2038,6 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     console.log('Background timer settings updated:', data);
   });
 
-  ipcMain.on('set-app-font', (event, font) => {
-    appSettings.appFont = (font === 'bold') ? 'bold' : 'quill';
-    saveSettingsDebounced();
-    applyFontToAllViews();
-  });
-
-  ipcMain.handle('get-app-font', () => appSettings.appFont || 'quill');
-
   // ── Stopwatch panel legacy IPC ──────────────────────────────────────────────
   ipcMain.handle('get-game-click-timer-state', () => ({ running: gameClickTimerRunning, seconds: gameClickTimerSeconds, afkGameClick }));
 
@@ -1885,16 +2236,28 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     animateChatToggle(!chatVisible);
   });
 
-  // ── Tab IPC ─────────────────────────────────────────────────────────────────
-  ipcMain.on('add-tab', (event, url, customTitle) => {
+  // ── Tabs ────────────────────────────────────────────────────────────────────
+  let tabIdCounter = 0;
+
+  // Creates a tab and its view. Returns the new (or existing) tab id.
+  // opts.activate — false leaves the current tab in front, used when restoring
+  // a saved set of tabs where only one of them should end up active.
+  function createTab(url, customTitle, iconPath, opts) {
+    const { activate = true } = opts || {};
+
     const existingId = tabByUrl.get(url);
     if (existingId) {
       const pv = primaryViews.find(pv => pv.id === existingId);
-      if (pv) { primaryViews.forEach(({ view }) => view.setVisible(false)); pv.view.setVisible(true); currentTab = existingId; mainWindow.webContents.send('update-active', existingId); return; }
-      else { tabByUrl.delete(url); }
+      if (pv) { if (activate) switchToTab(existingId); return existingId; }
+      tabByUrl.delete(url);
     }
-    const id = Date.now().toString(), title = customTitle || url;
-    tabs.push({ id, url, title }); tabByUrl.set(url, id);
+
+    const id = 'tab-' + (++tabIdCounter);
+    const title = customTitle || url;
+    const icon = resolveAssetIcon(iconPath) ? iconPath : null;
+    tabs.push({ id, url, title, icon });
+    tabByUrl.set(url, id);
+
     const newView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') } });
     newView.webContents.loadURL(url);
     newView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
@@ -1902,43 +2265,111 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     mainWindow.contentView.addChildView(newView);
     primaryViews.push({ id, view: newView });
     if (appSettings.tabZoom && appSettings.tabZoom[url]) newView.webContents.once('did-finish-load', () => { try { newView.webContents.setZoomFactor(appSettings.tabZoom[url]); } catch (e) {} });
-    primaryViews.forEach(({ view }) => view.setVisible(false));
-    newView.setVisible(true); currentTab = id;
-    mainWindow.webContents.send('add-tab', id, title);
-    mainWindow.webContents.send('update-active', id);
-    if (!customTitle) newView.webContents.on('page-title-updated', (event, pageTitle) => { const t = tabs.find(t => t.id === id); if (t) t.title = pageTitle; mainWindow.webContents.send('update-tab-title', id, pageTitle); });
+    mainWindow.webContents.send('add-tab', id, title, icon);
+    if (!customTitle) newView.webContents.on('page-title-updated', (event, pageTitle) => {
+      const t = tabs.find(t => t.id === id);
+      if (t) t.title = pageTitle;
+      mainWindow.webContents.send('update-tab-title', id, pageTitle);
+      persistTabs();
+    });
+    // A freshly added child view sits on top, so hide it unless it's taking focus.
+    if (activate) switchToTab(id); else newView.setVisible(false);
     updateBounds();
-  });
+    persistTabs();
+    return id;
+  }
 
-  ipcMain.on('close-tab', (event, id) => {
-    if (id !== 'main') {
-      const removedTab = tabs.find(t => t.id === id);
-      tabs = tabs.filter(t => t.id !== id);
-      const index = primaryViews.findIndex(pv => pv.id === id);
-      if (index !== -1) {
-        if (removedTab && tabByUrl.get(removedTab.url) === id) tabByUrl.delete(removedTab.url);
-        mainWindow.contentView.removeChildView(primaryViews[index].view);
-        primaryViews.splice(index, 1);
-      }
-      mainWindow.webContents.send('close-tab', id);
-      updateBounds();
-      if (currentTab === id) ipcMain.emit('switch-tab', event, 'main');
+  // Snapshot of the tab strip for the next launch. Tab ids are per-run, so the
+  // active tab is stored as an index into openTabs (or 'main' for the game view).
+  function persistTabs() {
+    const open = tabs.filter(t => t.id !== 'main');
+    appSettings.openTabs = open.map(t => ({ url: t.url, title: t.title, icon: t.icon || null }));
+    const idx = open.findIndex(t => t.id === currentTab);
+    appSettings.activeTab = idx === -1 ? 'main' : idx;
+    saveSettingsDebounced();
+  }
+
+  let tabsRestored = false;
+  function restoreTabs() {
+    if (tabsRestored) return;
+    tabsRestored = true;
+    const saved = Array.isArray(appSettings.openTabs) ? appSettings.openTabs : [];
+    // Read the active tab up front: creating each tab calls persistTabs(),
+    // which rewrites appSettings.activeTab from the still-unchanged current tab.
+    const savedActive = appSettings.activeTab;
+    const restoredIds = [];
+    saved.forEach(t => {
+      if (!t || !t.url) return;
+      restoredIds.push(createTab(t.url, t.title, t.icon, { activate: false }));
+    });
+    const activeId = (typeof savedActive === 'number' && restoredIds[savedActive]) ? restoredIds[savedActive] : 'main';
+    switchToTab(activeId);
+    if (restoredIds.length) log.info(`Restored ${restoredIds.length} tab(s), active: ${activeId}`);
+  }
+
+  ipcMain.on('add-tab', (event, url, customTitle, iconPath) => { createTab(url, customTitle, iconPath); });
+
+  // Tears a tab down (view + bookkeeping) and returns its data, or null when the
+  // id is unknown or refers to the unclosable game view tab.
+  function removeTab(id) {
+    if (id === 'main') return null;
+    const removedTab = tabs.find(t => t.id === id);
+    if (!removedTab) { mainWindow.webContents.send('close-tab', id); return null; }
+    tabs = tabs.filter(t => t.id !== id);
+    const index = primaryViews.findIndex(pv => pv.id === id);
+    if (index !== -1) {
+      if (tabByUrl.get(removedTab.url) === id) tabByUrl.delete(removedTab.url);
+      mainWindow.contentView.removeChildView(primaryViews[index].view);
+      primaryViews.splice(index, 1);
     }
-  });
+    mainWindow.webContents.send('close-tab', id);
+    updateBounds();
+    if (currentTab === id) switchToTab('main');
+    persistTabs();
+    return removedTab;
+  }
 
-  ipcMain.on('switch-tab', (event, id) => {
+  function switchToTab(id) {
     currentTab = id;
     primaryViews.forEach(({ view }) => view.setVisible(false));
     const cv = primaryViews.find(pv => pv.id === id);
     if (cv) cv.view.setVisible(true);
     mainWindow.webContents.send('update-active', id);
     scheduleWindowManagerReflow();
+    persistTabs();
+  }
+
+  ipcMain.on('close-tab', (event, id) => { removeTab(id); });
+
+  ipcMain.on('switch-tab', (event, id) => switchToTab(id));
+
+  // Chrome-style drag reorder: the tab strip owns the visual order, this keeps
+  // the main-process list in the same order so both sides agree.
+  ipcMain.on('reorder-tabs', (event, orderedIds) => {
+    if (!Array.isArray(orderedIds)) return;
+    const byId = new Map(tabs.map(t => [t.id, t]));
+    const reordered = [];
+    orderedIds.forEach(id => { const t = byId.get(id); if (t) { reordered.push(t); byId.delete(id); } });
+    byId.forEach(t => reordered.push(t)); // anything the renderer didn't mention keeps its place at the end
+    // The game view tab is pinned first no matter what order arrives.
+    const mainIndex = reordered.findIndex(t => t.id === 'main');
+    if (mainIndex > 0) reordered.unshift(reordered.splice(mainIndex, 1)[0]);
+    tabs = reordered;
+    persistTabs();
+  });
+
+  // Dragged out of the tab strip → close the tab and reopen it as its own window
+  // at the cursor, carrying the tool icon across.
+  ipcMain.on('detach-tab', (event, id, screenX, screenY) => {
+    const tab = removeTab(id);
+    if (!tab) return;
+    openExternalWindow(tab.url, tab.title, tab.icon, { screenX, screenY });
   });
 
   ipcMain.on('switch-nav-view', (event, view) => {
     currentNavViewName = view || 'nav';
 
-    const builtInToolViews = new Set(['worldswitcher', 'hiscores', 'stopwatch', 'youtube']);
+    const builtInToolViews = new Set(['worldswitcher', 'hiscores', 'stopwatch', 'youtube', 'watchlist']);
     if (builtInToolViews.has(view) && navPanelMode === 'strip') {
       // Temporarily expand the panel AND grow the window to the right so
       // the primary view (game canvas) does not shrink.
@@ -1981,6 +2412,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       case 'worldswitcher': navView.webContents.loadFile(path.join(__dirname, '/navitems/worldswitcher.html')); break;
       case 'hiscores':      navView.webContents.loadFile(path.join(__dirname, '/navitems/hiscores.html')); break;
       case 'stopwatch':     navView.webContents.loadFile(path.join(__dirname, '/navitems/stopwatch.html')); break;
+      case 'watchlist':     navView.webContents.loadFile(path.join(__dirname, '/navitems/watchlist.html')); break;
       case 'youtube':       navView.webContents.loadFile(path.join(__dirname, 'youtube.html')); break;
       case 'nav':           navView.webContents.loadFile(path.join(__dirname, 'nav.html')); break;
       default:              navView.webContents.loadFile(path.join(__dirname, 'nav.html')); break;
@@ -2153,6 +2585,581 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     startCreatorPolling(); // restart with new interval
   });
 
+  // ── Market watchlist IPC ──────────────────────────────────────────────────
+  // Requests are proxied through main: the panel is a file:// page, so a direct
+  // fetch to markets.lostcity.rs would be a cross-origin request.
+  ipcMain.handle('market-search-items', async (event, query) => {
+    const q = (query || '').trim();
+    if (q.length < 2) return [];
+    try {
+      const res = await fetch(`${MARKET_ORIGIN}/api/items?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': MARKET_UA, 'Accept': 'application/json' }
+      });
+      if (!res.ok) return [];
+      const items = await res.json();
+      return (Array.isArray(items) ? items : []).slice(0, 12)
+        .map(i => ({ id: i.id, name: i.name, slug: i.slug, cost: i.cost }));
+    } catch (e) { log.warn('Market item search failed:', e.message); return []; }
+  });
+
+  // ── Hiscores lookup + Compare window ──────────────────────────────────────
+  // Proxied through the main process on purpose: the hiscores API answers with
+  // access-control-allow-origin: https://2004.lostcity.rs, so a fetch from a
+  // file:// page is blocked by CORS. Main has no such restriction. It is also
+  // rate limited (429), which is reported back plainly rather than as a crash.
+  // ── Hiscores ──────────────────────────────────────────────────────────────
+  // One route for every hiscores lookup, single or compare. The API rate limits
+  // hard, and a comparison is two lookups back to back — the surest way to trip
+  // it. Three cheap measures keep that from happening:
+  //   · a short cache, so looking the same player up twice costs one request
+  //   · a minimum gap between requests, so two in a row are not simultaneous
+  //   · one retry after a pause, because the limit clears in about a second
+  const hiscoresCache = new Map();          // lowercased name -> { at, result }
+  const HISCORES_TTL = 60000;
+  const HISCORES_GAP = 400;                 // ms between consecutive requests
+  const HISCORES_RETRY_WAIT = 1500;
+  let hiscoresLastFetch = 0;
+
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function fetchHiscores(player) {
+    const gap = HISCORES_GAP - (Date.now() - hiscoresLastFetch);
+    if (gap > 0) await wait(gap);
+    hiscoresLastFetch = Date.now();
+    return fetch(
+      `https://2004.lostcity.rs/api/hiscores/player/${encodeURIComponent(player)}`,
+      { headers: { 'User-Agent': MARKET_UA, 'Accept': 'application/json' } }
+    );
+  }
+
+  ipcMain.handle('hiscores-lookup', async (event, name) => {
+    const player = (name || '').trim();
+    if (!player) return { ok: false, error: 'empty' };
+
+    const key = player.toLowerCase();
+    const hit = hiscoresCache.get(key);
+    if (hit && Date.now() - hit.at < HISCORES_TTL) return hit.result;
+
+    try {
+      let res = await fetchHiscores(player);
+      if (res.status === 429) {
+        await wait(HISCORES_RETRY_WAIT);
+        res = await fetchHiscores(player);
+      }
+      if (res.status === 429) return { ok: false, error: 'ratelimited' };
+      if (!res.ok) return { ok: false, error: 'notfound' };
+      const stats = await res.json();
+      if (!Array.isArray(stats) || !stats.length) return { ok: false, error: 'notfound' };
+      // Only successes are cached: a miss or a rate limit should be retried,
+      // not remembered for a minute.
+      const result = { ok: true, name: player, stats };
+      hiscoresCache.set(key, { at: Date.now(), result });
+      return result;
+    } catch (e) {
+      log.warn('Hiscores lookup failed:', player, e.message);
+      return { ok: false, error: 'network' };
+    }
+  });
+
+  ipcMain.on('open-compare-window', (event, names) => {
+    if (compareWindow && !compareWindow.isDestroyed()) {
+      compareWindow.focus();
+      if (names) compareWindow.webContents.send('compare-prefill', names);
+      return;
+    }
+    const saved = appSettings.compareWindow || { width: 760, height: 660 };
+    compareWindow = new BrowserWindow({
+      width: saved.width || 760, height: saved.height || 660,
+      x: saved.x != null ? saved.x : undefined, y: saved.y != null ? saved.y : undefined,
+      minWidth: 560, minHeight: 400,
+      autoHideMenuBar: true, backgroundColor: '#222222',
+      title: 'LostKit - Hiscores Compare',
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    compareWindow.loadFile(path.join(__dirname, 'navitems/compare.html'));
+    applyAlwaysOnTop(compareWindow);
+    applyWindowIcon(compareWindow, 'assets/hiscores.png');
+    compareWindow.webContents.on('did-finish-load', () => {
+      applyFontToView(compareWindow.webContents, true);
+      if (names) compareWindow.webContents.send('compare-prefill', names);
+    });
+    const saveBounds = () => {
+      if (compareWindow && !compareWindow.isDestroyed() && !compareWindow.isMinimized()) {
+        const b = compareWindow.getBounds();
+        appSettings.compareWindow = { width: b.width, height: b.height, x: b.x, y: b.y };
+        saveSettingsDebounced();
+      }
+    };
+    compareWindow.on('resized', saveBounds);
+    compareWindow.on('moved', saveBounds);
+    compareWindow.on('closed', () => { compareWindow = null; });
+  });
+
+  ipcMain.handle('get-market-watches', () => appSettings.marketWatches || []);
+  ipcMain.handle('get-market-default-deviation', () =>
+    Number.isFinite(appSettings.marketDefaultDeviation) ? appSettings.marketDefaultDeviation : 20);
+
+  // Same panel, its own window — so it can be browsed while the nav column is
+  // doing something else. Both copies stay live off the same broadcast.
+  ipcMain.on('open-watchlist-window', () => {
+    if (watchlistWindow && !watchlistWindow.isDestroyed()) { watchlistWindow.focus(); return; }
+    const saved = appSettings.watchlistWindow || { width: 340, height: 620 };
+    watchlistWindow = new BrowserWindow({
+      width: saved.width || 340, height: saved.height || 620,
+      x: saved.x != null ? saved.x : undefined, y: saved.y != null ? saved.y : undefined,
+      minWidth: 280, minHeight: 320,
+      autoHideMenuBar: true, backgroundColor: '#222222',
+      title: 'LostKit - Price Watch',
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    watchlistWindow.loadFile(path.join(__dirname, 'navitems/watchlist.html'), { query: { window: '1' } });
+    applyAlwaysOnTop(watchlistWindow);
+    applyWindowIcon(watchlistWindow, 'assets/Marketwatch.png');
+    watchlistWindow.webContents.on('did-finish-load', () => applyFontToView(watchlistWindow.webContents, true));
+    const saveBounds = () => {
+      if (watchlistWindow && !watchlistWindow.isDestroyed() && !watchlistWindow.isMinimized()) {
+        const b = watchlistWindow.getBounds();
+        appSettings.watchlistWindow = { width: b.width, height: b.height, x: b.x, y: b.y };
+        saveSettingsDebounced();
+      }
+    };
+    watchlistWindow.on('resized', saveBounds);
+    watchlistWindow.on('moved', saveBounds);
+    watchlistWindow.on('closed', () => { watchlistWindow = null; });
+  });
+  ipcMain.handle('get-market-notify-enabled', () => appSettings.marketNotifyEnabled !== false);
+  ipcMain.on('set-market-notify-enabled', (event, enabled) => {
+    appSettings.marketNotifyEnabled = !!enabled;
+    saveSettingsDebounced();
+  });
+
+  ipcMain.handle('add-market-watch', async (event, watch) => {
+    if (!watch || !watch.slug) return appSettings.marketWatches || [];
+    if (!appSettings.marketWatches) appSettings.marketWatches = [];
+    const entry = {
+      id: 'w' + Date.now(),
+      itemId: watch.itemId || null,
+      slug: watch.slug,
+      name: watch.name || watch.slug,
+      direction: watch.direction === 'sell' ? 'sell' : 'buy',
+      min: Number.isFinite(watch.min) ? watch.min : null,
+      max: Number.isFinite(watch.max) ? watch.max : null,
+      deviation: Number.isFinite(watch.deviation) ? Math.max(0, watch.deviation) : 20,
+      listings: [], matches: [], notifiedListingIds: [], best: null, barterCount: 0, farCount: 0
+    };
+    appSettings.marketWatches.push(entry);
+    appSettings.marketDefaultDeviation = entry.deviation;   // remembered for the next one
+    // First refresh is silent: everything already listed would otherwise fire at once.
+    try { await refreshMarketWatch(entry); entry.notifiedListingIds = entry.matches.map(m => m.id); }
+    catch (e) { entry.error = e.message; }
+    saveSettingsDebounced();
+    broadcastMarketWatches();   // keep the other copy of the panel in step
+    return appSettings.marketWatches;
+  });
+
+  // Edit a watch in place — changing the price you care about should not mean
+  // deleting and re-adding it.
+  ipcMain.handle('update-market-watch', async (event, id, patch) => {
+    const w = (appSettings.marketWatches || []).find(x => x.id === id);
+    if (!w || !patch) return appSettings.marketWatches || [];
+    if (patch.direction) w.direction = patch.direction === 'sell' ? 'sell' : 'buy';
+    w.min = Number.isFinite(patch.min) ? patch.min : null;
+    w.max = Number.isFinite(patch.max) ? patch.max : null;
+    if (Number.isFinite(patch.deviation)) {
+      w.deviation = Math.max(0, patch.deviation);
+      appSettings.marketDefaultDeviation = w.deviation;
+    }
+    // Re-check straight away, and treat whatever now matches as already seen so
+    // widening a range doesn't fire a burst of notifications for old listings.
+    try { await refreshMarketWatch(w); w.notifiedListingIds = w.matches.map(m => m.id); }
+    catch (e) { w.error = e.message; }
+    saveSettingsDebounced();
+    broadcastMarketWatches();
+    return appSettings.marketWatches;
+  });
+
+  // Completed trades for an item, oldest first — the basis of the price graph.
+  //
+  // Real trades are often not a clean pile of coins: high value items go for
+  // "340m + a santa hat + a d chain". Dropping those left barter-heavy items
+  // looking like they had never traded, so each sale is classified instead:
+  //   coins — a single coins offer, an exact price
+  //   mixed — coins plus other items, so the coin part is only a FLOOR
+  //   items — no coins at all, no gp value can be claimed
+  function classifySoldTrade(l) {
+    const offer = l.offers && l.offers[0];
+    const empty = { kind: 'none', price: null, extras: 0, text: 'no offer' };
+    if (!offer || !Array.isArray(offer.items) || !offer.items.length) return empty;
+
+    const coins = offer.items.filter(i => i.item && i.item.slug === 'coins');
+    const others = offer.items.filter(i => !i.item || i.item.slug !== 'coins');
+    const perEach = /each/i.test(offer.title || '');
+    const qty = Math.max(1, l.quantity || 1);
+    const coinTotal = coins.reduce((sum, i) => sum + i.quantity, 0);
+    const price = coins.length ? perUnitPrice(coinTotal, perEach, qty) : null;
+    const text = offer.items
+      .map(i => `${i.quantity.toLocaleString()} ${i.item ? i.item.name : '?'}`).join(' + ');
+    // Structured side of the offer, so the non-coin half can be valued later.
+    const parts = others.map(i => ({
+      slug: i.item ? i.item.slug : null,
+      name: i.item ? i.item.name : '?',
+      quantity: i.quantity,
+      cost: i.item ? i.item.cost : null
+    }));
+    const base = { price, extras: others.length, text, parts, coins: coinTotal, perEach, lotQty: qty };
+
+    if (coins.length && !others.length) return { ...base, kind: 'coins' };
+    if (coins.length && others.length)  return { ...base, kind: 'mixed' };
+    return { ...base, kind: 'items', price: null };
+  }
+
+  // ── Valuing the non-coin half of an offer ─────────────────────────────────
+  // "340m + a santa hat + a d chain" is not 340m. Each item is valued from its
+  // own completed sales around the date of the trade, falling back to what it
+  // currently goes for, and only then to its shop cost. One network trip per
+  // distinct item, cached for the session.
+  const itemPriceCache = new Map();   // slug -> { sales:[{price,t}], current, cost }
+
+  const medianOf = (prices) => {
+    if (!prices.length) return null;
+    const sorted = [...prices].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];   // median resists one silly listing
+  };
+
+  async function getItemPriceData(slug) {
+    if (itemPriceCache.has(slug)) return itemPriceCache.get(slug);
+    const data = { sales: [], current: null, cost: null };
+    try {
+      const page = await marketFetchPage(`/items/${encodeURIComponent(slug)}`);
+      const props = page.props || {};
+      if (props.item) data.cost = props.item.cost != null ? props.item.cost : null;
+
+      const sold = (props.soldListings && props.soldListings.data) || [];
+      const raw = [];
+      sold.forEach(l => {
+        const c = classifySoldTrade(l);
+        // Only clean coin sales are trustworthy enough to value other things with.
+        if (c.kind === 'coins' && c.price != null && l.soldAt) {
+          raw.push({ price: c.price, t: new Date(l.soldAt).getTime(), notes: l.notes });
+        }
+      });
+      // A placeholder price is just as poisonous here: it would pull the average
+      // this item is valued at down toward nothing.
+      const soldRef = referencePrice(raw.map(r => r.price));
+      raw.forEach(r => {
+        const screened = screenPrice(r.price, r.notes, soldRef);
+        if (screened.source !== 'suspect') data.sales.push({ price: screened.price, t: r.t });
+      });
+
+      const live = ((props.listings && props.listings.data) || []).filter(isListingLive);
+      const liveRef = referencePrice(live.map(listingUnitPrice), soldRef);
+      data.current = medianOf(live
+        .map(l => screenPrice(listingUnitPrice(l), l.notes, liveRef))
+        .filter(s => s.source !== 'suspect' && s.price != null)
+        .map(s => s.price));
+
+      // An item page defaults to the buy side. Rare things often have nobody
+      // bidding but somebody asking — a Gilded kiteshield had 0 buy listings
+      // and one sell listing at 30m — so check the other side before giving up.
+      if (!data.sales.length && data.current == null) {
+        const sellPage = await marketFetchPage(`/items/${encodeURIComponent(slug)}?type=sell`);
+        const asks = ((sellPage.props && sellPage.props.listings && sellPage.props.listings.data) || [])
+          .filter(isListingLive);
+        const askRef = referencePrice(asks.map(listingUnitPrice));
+        data.current = medianOf(asks
+          .map(l => screenPrice(listingUnitPrice(l), l.notes, askRef))
+          .filter(s => s.source !== 'suspect' && s.price != null)
+          .map(s => s.price));
+      }
+    } catch (e) {
+      log.warn('Item valuation lookup failed:', slug, e.message);
+    }
+    itemPriceCache.set(slug, data);
+    return data;
+  }
+
+  const WINDOW_MS = 14 * 86400000;
+
+  function valueFromData(data, atTime) {
+    if (data.sales.length) {
+      const near = data.sales.filter(s => Math.abs(s.t - atTime) <= WINDOW_MS);
+      if (near.length) {
+        return { unit: Math.round(near.reduce((s, x) => s + x.price, 0) / near.length),
+                 source: `avg of ${near.length} sale${near.length > 1 ? 's' : ''} near that date` };
+      }
+      // Nothing close in time — use the sales nearest to it instead of a blind average.
+      const sorted = [...data.sales].sort((a, b) => Math.abs(a.t - atTime) - Math.abs(b.t - atTime)).slice(0, 5);
+      return { unit: Math.round(sorted.reduce((s, x) => s + x.price, 0) / sorted.length),
+               source: `avg of ${sorted.length} nearest sale${sorted.length > 1 ? 's' : ''}` };
+    }
+    if (data.current) return { unit: data.current, source: 'current market price' };
+    // A zero shop value is not a valuation — treating it as one lets an item
+    // contribute nothing to a total and quietly drags the trade toward 0.
+    if (data.cost) return { unit: data.cost, source: 'shop value only' };
+    return { unit: null, source: 'no data' };
+  }
+
+  // What a standing offer paid in items is worth in gp, valued at today's
+  // prices. A santa hat wanted for "1 Halloween mask + 1 Halloween mask + 1
+  // Santa hat" is a real offer with a real value, and dropping it because no
+  // coins changed hands threw away half the book on the rare items — exactly
+  // the ones where a price check matters most.
+  async function valueOfferNow(classified) {
+    if (!classified || !classified.parts || !classified.parts.length) return null;
+    let total = classified.coins || 0;
+    for (const part of classified.parts) {
+      if (!part.slug) return null;
+      const value = valueFromData(await getItemPriceData(part.slug), Date.now());
+      if (value.unit == null) return null;      // one unknown item voids the lot
+      total += value.unit * part.quantity;
+    }
+    return perUnitPrice(total, classified.perEach, classified.lotQty);
+  }
+
+  // Values a batch of offers in one call. Capped so a cracker trade with a
+  // dozen odds and ends cannot turn into a dozen page loads every time.
+  ipcMain.handle('market-value-offers', async (event, requests) => {
+    if (!Array.isArray(requests) || !requests.length) return {};
+    const slugs = new Set();
+    requests.forEach(r => (r.parts || []).forEach(p => { if (p.slug) slugs.add(p.slug); }));
+    // A single easter egg trade can name 28 different items, so a tight cap
+    // silently left the tail "not valued" and killed the whole trade's value.
+    // Everything is cached for the session, so this is paid once per item.
+    const capped = [...slugs].slice(0, 80);
+    const queue = [...capped];
+    const worker = async () => { while (queue.length) await getItemPriceData(queue.shift()); };
+    await Promise.all([worker(), worker(), worker(), worker()]);   // 4 at a time
+
+    const out = {};
+    for (const req of requests) {
+      const atTime = new Date(req.soldAt).getTime();
+      let total = req.coins || 0;
+      let missing = 0;
+      const parts = [];
+      for (const p of (req.parts || [])) {
+        const data = p.slug && itemPriceCache.has(p.slug) ? itemPriceCache.get(p.slug) : null;
+        const v = data ? valueFromData(data, atTime) : { unit: null, source: 'not looked up' };
+        if (v.unit == null) missing++;
+        else total += v.unit * p.quantity;
+        parts.push({ name: p.name, quantity: p.quantity, unit: v.unit, source: v.source });
+      }
+      const complete = missing === 0;
+      const lot = Math.max(1, req.lotQty || 1);
+      // Ratio offers ("3 nature runes for 4 essence") give fractional unit
+      // values, so cheap items keep two decimals instead of rounding to zero.
+      const raw = total / (req.perEach ? 1 : lot);
+
+      // Only a complete valuation is safe to plot. If any item could not be
+      // priced the remainder is not a "low estimate" — it is a number missing
+      // its largest term. "105k raw sharks for an easter egg" with the sharks
+      // unpriced comes out as 0, which is not a cheap trade, it is no answer.
+      out[req.id] = complete && total > 0
+        ? { total, unit: raw < 10 ? Math.round(raw * 100) / 100 : Math.round(raw), complete: true, parts }
+        : { total: null, unit: null, complete: false, missing, parts };
+    }
+    return out;
+  });
+
+  // `days` asks for enough pages to actually cover that window — without it a
+  // busy item returns ten pages of one week and a "3 months" view has nothing
+  // older to show.
+  ipcMain.handle('market-price-history', async (event, slug, opts) => {
+    if (!slug) return { trades: [], total: 0 };
+    const days = (opts && Number(opts.days)) || 0;
+    const cutoff = days ? Date.now() - days * 86400000 : null;
+    const MAX_PAGES = days ? 12 : 3;   // 12 pages ≈ 120 trades, still polite
+    try {
+      const rows = [];
+      let total = 0;
+      let complete = false;
+      for (let p = 1; p <= MAX_PAGES; p++) {
+        const page = await marketFetchPage(`/items/${encodeURIComponent(slug)}?sold_page=${p}`);
+        const sold = page.props && page.props.soldListings;
+        if (!sold || !Array.isArray(sold.data) || !sold.data.length) { complete = true; break; }
+        rows.push(...sold.data);
+        if (sold.meta) {
+          total = sold.meta.total || rows.length;
+          if (!sold.meta.next_page_url || p >= sold.meta.last_page) { complete = true; break; }
+        } else { complete = true; break; }
+        // Stop as soon as we hold something older than the window asked for.
+        if (cutoff) {
+          const oldest = Math.min(...rows.filter(l => l.soldAt).map(l => new Date(l.soldAt).getTime()));
+          if (Number.isFinite(oldest) && oldest < cutoff) break;
+        }
+      }
+      const classified = rows.filter(l => l.soldAt).map(l => ({ l, c: classifySoldTrade(l) }));
+      // A placeholder price is even more obvious on a chart than in a list: one
+      // sale recorded as 169gp plots on the floor and drags the line down with
+      // it. Judged against the item's own sales, which is the best sample we
+      // will ever have of what it really goes for.
+      const reference = referencePrice(classified.filter(x => x.c.kind === 'coins').map(x => x.c.price));
+      const trades = classified
+        .map(({ l, c }) => {
+          // Only pure coin sales are screened. In a mixed offer the coin figure
+          // is openly a floor with items stacked on top — "4m + a ranger set" is
+          // meant to look small next to the going rate, and calling that a
+          // placeholder would flag half the high-value trades on the site.
+          const screened = c.kind === 'coins' && c.price != null
+            ? screenPrice(c.price, l.notes, reference)
+            : { price: c.price, source: 'ok' };
+          const suspect = screened.source === 'suspect';
+          return { id: l.id, kind: c.kind,
+                   // Suspect sales carry no price at all, which keeps them off
+                   // the chart while still listing them below it.
+                   price: suspect ? null : screened.price,
+                   // What was actually written down, kept whenever it is not
+                   // what we ended up using — including suspects, where the
+                   // listed number is the whole point of the explanation.
+                   listedPrice: suspect || screened.price !== c.price ? c.price : null,
+                   suspect,
+                   priceFromNotes: screened.source === 'notes',
+                   notes: l.notes || '',
+                   extras: c.extras, offer: c.text,
+                   parts: c.parts, coins: c.coins, perEach: c.perEach, lotQty: c.lotQty,
+                   soldAt: l.soldAt, type: l.type, quantity: l.quantity, username: l.username };
+        })
+        .sort((a, b) => new Date(a.soldAt) - new Date(b.soldAt));
+      const oldest = trades.length ? new Date(trades[0].soldAt).getTime() : null;
+      return { trades, total: total || trades.length, oldest, complete };
+    } catch (e) {
+      log.warn('Price history failed:', slug, e.message);
+      return { trades: [], total: 0, error: e.message };
+    }
+  });
+
+  ipcMain.handle('get-market-poll-interval', () => appSettings.marketPollIntervalMs || 300000);
+
+  // What an item is going for right now, both sides of the book. Completed
+  // trades say what it went for; this says what it would cost today.
+  ipcMain.handle('market-live-prices', async (event, slug) => {
+    if (!slug) return null;
+    const fetchSide = async (type) => {
+      const page = await marketFetchPage(`/items/${encodeURIComponent(slug)}?type=${type}`);
+      return ((page.props && page.props.listings && page.props.listings.data) || []).filter(isListingLive);
+    };
+
+    // Valuing item offers costs a page load per distinct item, so a busy book
+    // is capped — the point is to stop throwing the offers away, not to price
+    // every last one.
+    const MAX_VALUED = 12;
+
+    const summarise = async (rows, reference) => {
+      // Every offer that survives screening is returned, not just the summary:
+      // for an item offer the gp figure is our own estimate, so who is offering
+      // and what they are actually putting up has to be visible.
+      const offers = [];
+      let suspect = 0, fromNotes = 0, valued = 0, unvalued = 0, budget = MAX_VALUED;
+      for (const l of rows) {
+        const entry = { username: l.username, quantity: l.quantity,
+                        offer: describeOffer(l), notes: l.notes || '', updatedAt: l.updatedAt };
+        const raw = listingUnitPrice(l);
+        if (raw != null) {
+          const screened = screenPrice(raw, l.notes, reference);
+          if (screened.source === 'suspect') { suspect++; continue; }
+          if (screened.source === 'notes') fromNotes++;
+          offers.push({ ...entry, price: screened.price, fromNotes: screened.source === 'notes', valued: false });
+          continue;
+        }
+        // Paid in items rather than coins.
+        if (budget <= 0) { unvalued++; continue; }
+        budget--;
+        const worth = await valueOfferNow(classifySoldTrade(l));
+        // An item offer valued at a fraction of the going rate is the same kind
+        // of noise as a placeholder, so it is held to the same standard.
+        if (worth != null && (reference == null ||
+            (worth >= reference / OUTLIER_FACTOR && worth <= reference * OUTLIER_FACTOR))) {
+          offers.push({ ...entry, price: worth, fromNotes: false, valued: true });
+          valued++;
+        } else {
+          unvalued++;
+        }
+      }
+      const prices = offers.map(o => o.price).sort((a, b) => a - b);
+      const base = { count: rows.length, barter: unvalued, suspect, fromNotes, valued, offers };
+      if (!prices.length) return { ...base, min: null, max: null, avg: null, median: null };
+      return {
+        ...base,
+        min: prices[0],
+        max: prices[prices.length - 1],
+        avg: Math.round(prices.reduce((s, p) => s + p, 0) / prices.length),
+        median: prices[Math.floor(prices.length / 2)]
+      };
+    };
+
+    try {
+      const [sellRows, buyRows] = await Promise.all([fetchSide('sell'), fetchSide('buy')]);
+      // Both sides judged against one reference drawn from both. A side often
+      // holds a single listing — the santa hat buy side held exactly one, for
+      // "169 Coins" — and a lone listing has nothing of its own to be measured
+      // against. The other side of the book does.
+      const reference = referencePrice([...sellRows, ...buyRows].map(listingUnitPrice));
+      return {
+        sell: await summarise(sellRows, reference),
+        buy: await summarise(buyRows, reference),
+        asOf: Date.now()
+      };
+    } catch (e) {
+      log.warn('Live price lookup failed:', slug, e.message);
+      return null;
+    }
+  });
+
+  // The chart needs room to say anything, so it gets a window rather than a
+  // 226px slot in the nav column. One window, reused for whichever item you ask
+  // for next.
+  // An empty slug is valid: it opens the window as a blank price checker.
+  ipcMain.on('open-price-history-window', (event, itemInfo) => {
+    if (!itemInfo) return;
+    if (priceHistoryWindow && !priceHistoryWindow.isDestroyed()) {
+      if (!itemInfo.slug) { priceHistoryWindow.show(); priceHistoryWindow.focus(); return; }
+      priceHistoryWindow.webContents.send('price-history-item', itemInfo);
+      priceHistoryWindow.show();
+      priceHistoryWindow.focus();
+      return;
+    }
+    const saved = appSettings.priceHistoryWindow || { width: 780, height: 600 };
+    priceHistoryWindow = new BrowserWindow({
+      width: saved.width || 780, height: saved.height || 600,
+      x: saved.x != null ? saved.x : undefined, y: saved.y != null ? saved.y : undefined,
+      minWidth: 520, minHeight: 380,
+      autoHideMenuBar: true, backgroundColor: '#222222',
+      title: 'LostKit - Price History',
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    priceHistoryWindow.loadFile(path.join(__dirname, 'navitems/pricehistory.html'), {
+      query: { slug: itemInfo.slug, name: itemInfo.name || itemInfo.slug }
+    });
+    applyAlwaysOnTop(priceHistoryWindow);
+    applyWindowIcon(priceHistoryWindow, 'assets/Pricecheck.png');
+    priceHistoryWindow.webContents.on('did-finish-load', () => applyFontToView(priceHistoryWindow.webContents, true));
+    const saveBounds = () => {
+      if (priceHistoryWindow && !priceHistoryWindow.isDestroyed() && !priceHistoryWindow.isMinimized()) {
+        const b = priceHistoryWindow.getBounds();
+        appSettings.priceHistoryWindow = { width: b.width, height: b.height, x: b.x, y: b.y };
+        saveSettingsDebounced();
+      }
+    };
+    priceHistoryWindow.on('resized', saveBounds);
+    priceHistoryWindow.on('moved', saveBounds);
+    priceHistoryWindow.on('closed', () => { priceHistoryWindow = null; });
+  });
+
+  ipcMain.handle('remove-market-watch', (event, id) => {
+    appSettings.marketWatches = (appSettings.marketWatches || []).filter(w => w.id !== id);
+    saveSettingsDebounced();
+    broadcastMarketWatches();
+    return appSettings.marketWatches;
+  });
+
+  ipcMain.handle('refresh-market-watches', async () => {
+    await pollMarketWatches({ notify: false });
+    return appSettings.marketWatches || [];
+  });
+
+  ipcMain.on('open-market-item', (event, slug) => {
+    createTab(`${MARKET_ORIGIN}/items/${slug}`, 'Markets', 'assets/market.png');
+  });
+
   // ── Nav button visibility ─────────────────────────────────────────────────
   ipcMain.handle('get-hidden-nav-buttons', () => appSettings.hiddenNavButtons || []);
   ipcMain.on('set-hidden-nav-buttons', (event, hiddenIds) => {
@@ -2180,6 +3187,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       }
       if (currentTab === 'main') { appSettings.lastWorld = { url, title }; saveSettingsDebounced(); }
       mainWindow.webContents.send('update-tab-title', currentTab, title);
+      persistTabs();
       ipcMain.emit('switch-nav-view', null, 'nav');
       refreshLatency();
     }
@@ -2195,20 +3203,81 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   ipcMain.on('set-chat-height', (event, height) => { chatHeightValue = Math.max(200, Math.min(height, 800)); appSettings.chatHeight = chatHeightValue; saveSettingsDebounced(); updateBounds(); });
   ipcMain.on('update-chat-height', (event, height) => { chatHeightValue = Math.max(200, Math.min(800, height)); appSettings.chatHeight = chatHeightValue; saveSettingsDebounced(); updateBounds(); });
 
-  ipcMain.on('open-external', (event, url, title) => {
-    const existing = externalWindowsByUrl.get(url);
-    if (existing && !existing.isDestroyed()) { existing.focus(); return; }
-    const extBounds = appSettings.externalWindows && appSettings.externalWindows[url] ? appSettings.externalWindows[url] : { width: 1000, height: 700 };
+  // Opens a URL in its own window. Several windows may be open for the same URL
+  // at once; each one saves its size/position/zoom under that URL, so the window
+  // closed last is the one whose adjustments are restored next time.
+  // `spawnAt.screenX/screenY` places the window at a drop point (tab tear-off).
+  function openExternalWindow(url, title, iconPath, spawnAt) {
+    if (!url) return null;
+    const saved = (appSettings.externalWindows && appSettings.externalWindows[url]) || {};
+    const width  = saved.width  || 1000;
+    const height = saved.height || 700;
+
+    let x = saved.x != null ? saved.x : undefined;
+    let y = saved.y != null ? saved.y : undefined;
+
+    const openForUrl = externalWindowsByUrl.get(url);
+    const openCount = openForUrl ? openForUrl.size : 0;
+
+    if (spawnAt && typeof spawnAt.screenX === 'number' && typeof spawnAt.screenY === 'number') {
+      // Drop point: put the titlebar roughly under the cursor grab point.
+      x = Math.round(spawnAt.screenX - Math.min(120, width / 2));
+      y = Math.round(spawnAt.screenY - 16);
+    } else if (openCount > 0 && x != null && y != null) {
+      // Cascade extra windows of the same URL so they don't stack exactly.
+      x += openCount * 30;
+      y += openCount * 30;
+    }
+
+    // Keep the window on a visible display.
+    if (x != null && y != null) {
+      try {
+        const { screen } = require('electron');
+        const wa = screen.getDisplayNearestPoint({ x, y }).workArea;
+        x = Math.max(wa.x, Math.min(x, wa.x + wa.width  - Math.min(width, wa.width)));
+        y = Math.max(wa.y, Math.min(y, wa.y + wa.height - Math.min(height, wa.height)));
+      } catch (e) {}
+    }
+
     const win = new BrowserWindow({
-      width: extBounds.width || 1000, height: extBounds.height || 700,
-      x: extBounds.x != null ? extBounds.x : undefined, y: extBounds.y != null ? extBounds.y : undefined,
+      width, height,
+      x: x != null ? x : undefined, y: y != null ? y : undefined,
       title: title || url, webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') }
     });
     win.loadURL(url); win.setMenuBarVisibility(false);
     applyAlwaysOnTop(win);
-    externalWindowsByUrl.set(url, win);
+    applyWindowIcon(win, iconPath);
+    // What this window would need to become a tab again.
+    win._lkUrl = url; win._lkTitle = title; win._lkIcon = iconPath;
+
+    // Right-click anywhere in the window → dock it back into the tab strip.
+    win.webContents.on('context-menu', (event, params) => {
+      const template = [
+        { label: 'Dock back into tabs', click: () => dockWindowIntoTabs(win) },
+        { type: 'separator' },
+        { label: 'Reload', click: () => { if (!win.isDestroyed()) win.webContents.reload(); } }
+      ];
+      if (params.selectionText) template.push({ label: 'Copy', role: 'copy' });
+      Menu.buildFromTemplate(template).popup({ window: win });
+    });
+
+    // Drag the window over the tab strip and let go → dock it back. 'move' fires
+    // throughout the drag, 'moved' once when it is released.
+    win.on('move', () => { if (!win.isDestroyed()) setTabStripDropTarget(isCursorOverTabStrip()); });
+    win.on('moved', () => {
+      if (win.isDestroyed()) return;
+      const overStrip = isCursorOverTabStrip();
+      setTabStripDropTarget(false);
+      // Let the native drag loop finish before closing the window out from under it.
+      if (overStrip) setTimeout(() => dockWindowIntoTabs(win), 0);
+    });
+
+    if (!openForUrl) externalWindowsByUrl.set(url, new Set([win]));
+    else openForUrl.add(win);
+
     if (!appSettings.externalWindows) appSettings.externalWindows = {};
     if (appSettings.externalZoom && appSettings.externalZoom[url]) win.webContents.once('did-finish-load', () => { try { win.webContents.setZoomFactor(appSettings.externalZoom[url]); } catch (e) {} });
+
     const saveExtBounds = () => {
       if (win && !win.isDestroyed() && !win.isMinimized()) {
         const b = win.getBounds();
@@ -2217,7 +3286,26 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       }
     };
     win.on('resized', saveExtBounds); win.on('moved', saveExtBounds);
-    win.on('closed', () => { if (externalWindowsByUrl.get(url) === win) externalWindowsByUrl.delete(url); });
+
+    // Last one closed wins: write this window's final state as the stored one.
+    win.on('close', () => {
+      try {
+        if (!win.isDestroyed() && !win.isMinimized()) {
+          const b = win.getBounds();
+          appSettings.externalWindows[url] = { width: b.width, height: b.height, x: b.x, y: b.y };
+        }
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+          if (!appSettings.externalZoom) appSettings.externalZoom = {};
+          appSettings.externalZoom[url] = win.webContents.getZoomFactor();
+        }
+        saveSettings();
+      } catch (e) { log.warn('Failed to save external window state:', e.message); }
+    });
+    win.on('closed', () => {
+      const set = externalWindowsByUrl.get(url);
+      if (set) { set.delete(win); if (set.size === 0) externalWindowsByUrl.delete(url); }
+    });
+
     win.webContents.on('ipc-message', (event, channel, data) => {
       if (channel === 'zoom-wheel' && data && typeof data.deltaY === 'number') {
         const newFactor = getNextZoomStep(win.webContents.getZoomFactor(), data.deltaY < 0);
@@ -2226,12 +3314,32 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         appSettings.externalZoom[url] = newFactor; saveSettingsDebounced();
       }
     });
+    return win;
+  }
+
+  // The mirror of tear-off. The window already knows its url, title and icon —
+  // exactly what createTab() needs — so docking is close-window + make-tab.
+  // Closing normally (rather than destroying) lets the window save its bounds
+  // and zoom on the way out, so tearing it off again restores how it was.
+  function dockWindowIntoTabs(win) {
+    if (!win || win.isDestroyed() || !win._lkUrl) return;
+    const { _lkUrl: url, _lkTitle: title, _lkIcon: icon } = win;
+    setTabStripDropTarget(false);
+    win.close();
+    createTab(url, title, icon);
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+    log.info('Docked window back into tabs:', title || url);
+  }
+
+  ipcMain.on('open-external', (event, url, title, iconPath) => {
+    openExternalWindow(url, title, iconPath);
   });
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 app.on('will-quit', () => {
+  flushSettings();
   BrowserWindow.getAllWindows().forEach(win => {
     try { if (!win.isDestroyed()) win.destroy(); } catch (e) {}
   });

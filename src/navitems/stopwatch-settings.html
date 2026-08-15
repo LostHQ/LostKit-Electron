@@ -4,8 +4,8 @@
     <link rel="stylesheet" type="text/css" href="../main.css" />
     <style>
         @font-face {
-            font-family: 'RS-Quill';
-            src: url('../assets/fonts/RuneScape-Quill-8.otf') format('opentype');
+            font-family: 'RS-Bold';
+            src: url('../assets/fonts/RuneScape-Bold-12.otf') format('opentype');
         }
 
         /* ── Base ───────────────────────────────────────────────────────────── */
@@ -395,33 +395,6 @@
                 </div>
             </div>
 
-            <div class="folder-section">
-                <div class="section-label">Interface Font</div>
-                <div style="color: #b8a060; font-size: 11px; margin-bottom: 12px; line-height: 1.5;">
-                    Changes the default font used across the entire interface.<br>
-                    Takes effect immediately and is saved for future sessions.
-                </div>
-
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border: 2px solid #555; border-radius: 4px; transition: border-color 0.15s;" id="font-opt-quill">
-                        <input type="radio" name="appFont" value="quill" id="font-radio-quill" style="accent-color: #8b6914; width: 16px; height: 16px; cursor: pointer;">
-                        <div>
-                            <div style="font-size: 14px; color: #f0e68c; font-weight: bold;">RuneScape Quill</div>
-                            <div style="font-size: 11px; color: #888; margin-top: 2px;">Default handwritten style (RuneScape-Quill-8)</div>
-                        </div>
-                    </label>
-
-                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; border: 2px solid #555; border-radius: 4px; transition: border-color 0.15s;" id="font-opt-bold">
-                        <input type="radio" name="appFont" value="bold" id="font-radio-bold" style="accent-color: #8b6914; width: 16px; height: 16px; cursor: pointer;">
-                        <div>
-                            <div style="font-size: 14px; color: #f0e68c; font-weight: bold;">RuneScape Bold</div>
-                            <div style="font-size: 11px; color: #888; margin-top: 2px;">Cleaner, more readable style (RuneScape-Bold-12)</div>
-                        </div>
-                    </label>
-                </div>
-
-                <div id="font-apply-status" style="margin-top: 10px; font-size: 11px; color: #4CAF50; min-height: 16px;"></div>
-            </div>
 
             <div class="folder-section">
                 <div class="section-label">Navigation Buttons</div>
@@ -594,32 +567,7 @@
             updateScreenshotSoundLabel();
 
             updateStatus();
-
-            // Font setting
-            const fontVal = settings.appFont || 'quill';
-            const radio = document.querySelector(`input[name="appFont"][value="${fontVal}"]`);
-            if (radio) radio.checked = true;
-            updateFontOptionStyles(fontVal);
         });
-
-        // Font radio handlers — fire immediately on change
-        document.querySelectorAll('input[name="appFont"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                const val = radio.value;
-                ipcRenderer.send('set-app-font', val);
-                updateFontOptionStyles(val);
-                const status = document.getElementById('font-apply-status');
-                if (status) {
-                    status.textContent = 'Applied!';
-                    setTimeout(() => { status.textContent = ''; }, 1500);
-                }
-            });
-        });
-
-        function updateFontOptionStyles(val) {
-            document.getElementById('font-opt-quill').style.borderColor = val === 'quill' ? '#8b6914' : '#555';
-            document.getElementById('font-opt-bold').style.borderColor  = val === 'bold'  ? '#8b6914' : '#555';
-        }
 
         function updateStatus() {
             if (adventureCaptureEnabled) {
@@ -829,6 +777,7 @@
             { id: 'chat',          label: 'Chat' },
             { id: 'stopwatch',     label: 'Stopwatch' },
             { id: 'creators',      label: 'Creators' },
+            { id: 'watchlist',     label: 'Price Watch' },
             { id: 'hiscores',      label: 'Hiscores' },
             { id: 'notes',         label: 'Notes' },
             { id: 'forums',        label: 'Forums' },

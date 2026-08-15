@@ -8,7 +8,7 @@
     <div id="tabs" style="overflow-x: auto; white-space: nowrap; flex: 1 1 auto; display: flex; align-items: stretch;">
       <button id="nav-panel-toggle" style="display: flex; align-items: center; justify-content: center; font-size: 22px; border: none; background: #8b6914; color: #fff; border-radius: 8px 0 0 8px; width: 36px; height: 36px; cursor: pointer; margin-right: 4px; transition: background 0.2s;">&gt;</button>
       <button id="nav-panel-strip-toggle" title="Toggle strip mode" style="display: flex; align-items: center; justify-content: center; font-size: 16px; border: none; background: #3d2807; color: #fff; border-radius: 6px; width: 36px; height: 36px; cursor: pointer; margin-right: 8px; transition: background 0.15s;">≡</button>
-      <div class="tab active" data-id="main">W2 HD</div>
+      <div class="tab active" data-id="main" data-title="W2 HD" data-icon="assets/LostCity.png"></div>
     </div>
   </div>
   <div id="chat-resizer">
@@ -94,27 +94,160 @@
     // Set initial state (in case of reload)
     setNavPanelToggleState(navPanelCollapsed);
 
-    document.getElementById('tabs').addEventListener('click', (e) => {
+    const tabsEl = document.getElementById('tabs');
+
+    // Paints a tab: tool icon, then the name, then the close button
+    // (the game view tab has no close button — it can't be closed).
+    function renderTab(tabEl, title, icon) {
+      if (icon != null) tabEl.dataset.icon = icon;
+      if (title != null) tabEl.dataset.title = title;
+      const label = tabEl.dataset.title || '';
+      tabEl.innerHTML = '';
+      if (tabEl.dataset.icon) {
+        const img = document.createElement('img');
+        img.className = 'tab-icon';
+        img.src = tabEl.dataset.icon;
+        img.draggable = false;
+        img.onerror = () => { img.style.display = 'none'; };
+        tabEl.appendChild(img);
+      }
+      const name = document.createElement('span');
+      name.className = 'tab-title';
+      name.textContent = label;
+      tabEl.appendChild(name);
+      if (tabEl.dataset.id !== 'main') {
+        const close = document.createElement('span');
+        close.className = 'close';
+        close.textContent = '×';
+        tabEl.appendChild(close);
+      }
+      tabEl.title = label;
+    }
+
+    const mainTabEl = tabsEl.querySelector('.tab[data-id="main"]');
+    if (mainTabEl) renderTab(mainTabEl);
+
+    let suppressClick = false;
+
+    tabsEl.addEventListener('click', (e) => {
+      if (suppressClick) return;
       if (e.target.classList.contains('close')) {
         e.stopPropagation();
-        const tab = e.target.parentElement;
-        ipcRenderer.send('close-tab', tab.dataset.id);
-      } else if (e.target.classList.contains('tab')) {
-        ipcRenderer.send('switch-tab', e.target.dataset.id);
+        const tab = e.target.closest('.tab');
+        if (tab) ipcRenderer.send('close-tab', tab.dataset.id);
+        return;
       }
+      const tab = e.target.closest('.tab');
+      if (tab) ipcRenderer.send('switch-tab', tab.dataset.id);
     });
 
-    ipcRenderer.on('add-tab', (event, id, title) => {
+    // ── Chrome-style tab dragging ────────────────────────────────────────────
+    // Drag sideways to reorder; drag clear of the tab strip and release to pop
+    // the tab out into its own window. The game view tab is exempt: it is
+    // pinned as the first tab and cannot be moved, reordered or detached.
+    const DRAG_THRESHOLD = 5;   // px before a press counts as a drag
+    const DETACH_BELOW   = 70;  // px below the strip that still counts as "inside"
+    const DETACH_ABOVE   = -40;
+    let drag = null;
+
+    function tabsInStrip() {
+      return Array.from(tabsEl.querySelectorAll('.tab'));
+    }
+
+    function reorderDuringDrag(clientX) {
+      // The game view tab is pinned first, so it is never a drop target —
+      // nothing can be inserted in front of it.
+      const others = tabsInStrip().filter(t => t !== drag.el && t.dataset.id !== 'main');
+      let insertBefore = null;
+      for (const t of others) {
+        const r = t.getBoundingClientRect();
+        if (clientX < r.left + r.width / 2) { insertBefore = t; break; }
+      }
+      if (insertBefore) {
+        if (insertBefore.previousElementSibling !== drag.el) tabsEl.insertBefore(drag.el, insertBefore);
+      } else if (tabsEl.lastElementChild !== drag.el) {
+        tabsEl.appendChild(drag.el);
+      }
+    }
+
+    function followCursor(clientX) {
+      drag.el.style.transform = '';
+      const rect = drag.el.getBoundingClientRect();
+      drag.el.style.transform = `translateX(${clientX - rect.left - drag.grabOffsetX}px)`;
+    }
+
+    function endDrag() {
+      if (!drag) return null;
+      const d = drag;
+      drag = null;
+      d.el.style.transform = '';
+      d.el.classList.remove('dragging', 'detaching');
+      document.body.classList.remove('tab-dragging');
+      return d;
+    }
+
+    tabsEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.classList.contains('close')) return;
+      const tab = e.target.closest('.tab');
+      if (!tab) return;
+      // The game view tab is fixed in place: it never drags, so it can neither
+      // change position nor be torn off. Clicking it still activates it.
+      if (tab.dataset.id === 'main') return;
+      drag = {
+        el: tab,
+        id: tab.dataset.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        grabOffsetX: e.clientX - tab.getBoundingClientRect().left,
+        active: false,
+        detach: false
+      };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      if (!drag.active) {
+        if (Math.abs(e.clientX - drag.startX) < DRAG_THRESHOLD &&
+            Math.abs(e.clientY - drag.startY) < DRAG_THRESHOLD) return;
+        drag.active = true;
+        drag.el.classList.add('dragging');
+        document.body.classList.add('tab-dragging');
+      }
+      e.preventDefault();
+      const insideStrip = e.clientY > DETACH_ABOVE && e.clientY < DETACH_BELOW;
+      drag.detach = !insideStrip && drag.id !== 'main';
+      drag.el.classList.toggle('detaching', drag.detach);
+      if (insideStrip) reorderDuringDrag(e.clientX);
+      followCursor(e.clientX);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      const d = endDrag();
+      if (!d || !d.active) return;
+      // Swallow the click that follows this drag so it doesn't switch tabs.
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 0);
+      ipcRenderer.send('reorder-tabs', tabsInStrip().map(t => t.dataset.id));
+      if (d.detach) ipcRenderer.send('detach-tab', d.id, e.screenX, e.screenY);
+    });
+
+    window.addEventListener('blur', () => { endDrag(); });
+
+    ipcRenderer.on('add-tab', (event, id, title, icon) => {
       const tab = document.createElement('div');
       tab.className = 'tab';
       tab.dataset.id = id;
-      tab.innerHTML = title + (id !== 'main' ? ' <span class="close">×</span>' : '');
-      document.getElementById('tabs').appendChild(tab);
+      renderTab(tab, title, icon || '');
+      tabsEl.appendChild(tab);
     });
 
     ipcRenderer.on('close-tab', (event, id) => {
       const tab = document.querySelector(`[data-id="${id}"]`);
-      if (tab) tab.remove();
+      if (tab) {
+        if (drag && drag.el === tab) endDrag();
+        tab.remove();
+      }
     });
 
     ipcRenderer.on('update-active', (event, id) => {
@@ -127,9 +260,13 @@
 
     ipcRenderer.on('update-tab-title', (event, id, title) => {
       const tab = document.querySelector(`[data-id="${id}"]`);
-      if (tab) {
-        tab.innerHTML = title + (id !== 'main' ? ' <span class="close">×</span>' : '');
-      }
+      if (tab) renderTab(tab, title);
+    });
+
+    // An external window is hovering over the strip and would dock here if
+    // released — light the strip up so the drop point is obvious.
+    ipcRenderer.on('tab-strip-drop-target', (event, active) => {
+      tabsEl.classList.toggle('drop-target', active);
     });
 
     let chatHeightValue = 300;

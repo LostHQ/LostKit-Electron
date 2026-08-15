@@ -66,21 +66,28 @@ async function lookupPlayer() {
     document.getElementById('error').style.display = 'none';
     document.getElementById('loading').style.display = 'block';
 
-    try {
-        const response = await fetch(`https://2004.lostcity.rs/api/hiscores/player/${encodeURIComponent(playerName)}`);
+    // Same route the compare window uses, so both share one cache, one rate
+    // limiter and one set of error messages. Fetching straight from here used
+    // to report every failure as "player not found" — including a rate limit,
+    // which is a wait-and-retry, not a missing player.
+    const res = await ipcRenderer.invoke('hiscores-lookup', playerName);
+    document.getElementById('loading').style.display = 'none';
 
-        if (!response.ok) {
-            throw new Error('Player not found');
-        }
-
-        const data = await response.json();
-        displayPlayerStats(playerName, data);
-    } catch (error) {
-        console.error('Error fetching player data:', error);
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('error').style.display = 'block';
+    if (!res.ok) {
+        const err = document.getElementById('error');
+        err.textContent = HISCORES_ERRORS[res.error] || 'Could not look that player up.';
+        err.style.display = 'block';
+        return;
     }
+    displayPlayerStats(res.name, res.stats);
 }
+
+const HISCORES_ERRORS = {
+    empty:       'Enter a player name.',
+    notfound:    'No hiscores entry for that name.',
+    ratelimited: 'The hiscores API is rate limiting us — wait a moment and try again.',
+    network:     'Could not reach the hiscores API.'
+};
 
 function displayPlayerStats(playerName, statsData) {
     document.getElementById('loading').style.display = 'none';
@@ -139,4 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function goBack() {
     ipcRenderer.send('switch-nav-view', 'nav');
+}
+
+// Opens the compare window, carrying whatever name is already typed here so the
+// lookup you were doing becomes the left-hand side of the comparison.
+function openCompare() {
+    const typed = (document.getElementById('playerName') || {}).value || '';
+    ipcRenderer.send('open-compare-window', { p1: typed.trim(), p2: '' });
 }

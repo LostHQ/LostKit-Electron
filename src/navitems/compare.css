@@ -1,0 +1,189 @@
+/* Hiscores Compare — two mirrored tables with an arrow down the middle.
+   Colour is read from the LEFT player's point of view, everywhere:
+     green = left leads, red = left trails, blue = equal. */
+
+.cmp-body {
+    margin: 0;
+    padding: 10px 12px 16px;
+    background: #222222;
+    color: #f0e68c;
+    font-family: 'RS-Bold';
+    overflow-y: auto;
+}
+
+/* ── Controls ───────────────────────────────────────────────────────────── */
+.cmp-top {
+    position: sticky;
+    top: -10px;
+    z-index: 6;
+    background: #222222;
+    padding: 4px 0 6px;
+    border-bottom: 1px solid #3d3110;
+    margin-bottom: 8px;
+}
+
+.cmp-names { display: flex; align-items: center; gap: 6px; }
+
+.cmp-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 9px;
+    background: #2a2a2a;
+    border: 1px solid #5a4510;
+    border-radius: 3px;
+    color: #f0e68c;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+}
+
+.cmp-input:focus { border-color: #c8941c; background: #333; }
+.cmp-input::placeholder { color: #8a7a4a; }
+
+.cmp-swap, .cmp-go {
+    padding: 6px 12px;
+    background: url('../assets/button.jpg') repeat;
+    background-size: cover;
+    border: 2px outset #8b6914;
+    border-radius: 4px;
+    color: #f0e68c;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.cmp-swap { padding: 6px 9px; font-size: 15px; }
+.cmp-swap:hover, .cmp-go:hover { border: 2px inset #8b6914; background-color: rgba(139, 105, 20, 0.3); }
+.cmp-go:disabled { opacity: 0.5; cursor: default; border-style: outset; }
+
+.cmp-seg { display: flex; border: 1px solid #5a4510; border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+
+.cmp-seg-btn {
+    padding: 5px 10px;
+    background: #2a2a2a;
+    border: none;
+    border-right: 1px solid #5a4510;
+    color: #b8a86a;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.cmp-seg-btn:last-child { border-right: none; }
+.cmp-seg-btn:hover { background: #3a3a3a; color: #f0e68c; }
+.cmp-seg-btn.active { background: linear-gradient(to bottom, #6b5010, #4a3708); color: #fff; font-weight: bold; }
+
+.cmp-status { margin-top: 5px; font-size: 11px; color: #9a8a5a; min-height: 14px; }
+.cmp-status.error { color: #ff6b6b; }
+
+/* ── Summary ────────────────────────────────────────────────────────────── */
+.cmp-summary { margin-bottom: 6px; font-size: 12px; color: #9a8a5a; text-align: center; }
+.cmp-summary:empty { display: none; }
+.cmp-summary .win { color: #51cf66; font-weight: bold; }
+.cmp-summary .lose { color: #ff6b6b; font-weight: bold; }
+.cmp-summary .even { color: #74a0ff; font-weight: bold; }
+
+/* ── The two tables ─────────────────────────────────────────────────────── */
+/* One grid so both sides stay locked to the same columns as the name headers:
+   icon | value | sub | ARROW | sub | value | icon                            */
+.cmp-row, .cmp-head {
+    display: grid;
+    grid-template-columns: 26px 52px minmax(48px, 1fr) 46px minmax(48px, 1fr) 52px 26px;
+    align-items: center;
+    gap: 6px;
+}
+
+.cmp-head {
+    position: sticky;
+    top: 62px;
+    z-index: 5;
+    background: #222222;
+    padding: 4px 6px 5px;
+    border-bottom: 1px solid #8b6914;
+    margin-bottom: 2px;
+}
+
+.cmp-head .name {
+    grid-column: 1 / 4;
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmp-head .name.right { grid-column: 5 / 8; }
+.cmp-head .name .tot { display: block; font-size: 10px; font-weight: normal; color: #8a7a4a; }
+
+.cmp-row {
+    padding: 3px 6px;
+    border-bottom: 1px solid #262010;
+}
+
+.cmp-row:hover { background: rgba(139, 105, 20, 0.14); }
+
+/* Total level is the headline answer, so it sits above the skills and is given
+   its own weight rather than being just another row. */
+.cmp-row.total {
+    background: rgba(139, 105, 20, 0.14);
+    border: 1px solid #8b6914;
+    border-radius: 4px;
+    padding: 6px;
+    margin-bottom: 6px;
+}
+
+.cmp-row.total .cmp-val { font-size: 17px; }
+.cmp-row.total .cmp-arrow { font-size: 17px; }
+.cmp-row.total .cmp-icon { width: 24px; height: 24px; }
+
+.cmp-icon { width: 22px; height: 22px; object-fit: contain; }
+
+.cmp-val { font-size: 14px; font-weight: bold; color: #fff; text-align: center; }
+.cmp-sub { font-size: 10px; color: #8a7a4a; }
+
+/* Small print — the plain face, see --font-small in main.css */
+.cmp-seg-btn,
+.cmp-status,
+.cmp-head .name .tot,
+.cmp-sub {
+    font-family: var(--font-small) !important;
+}
+.cmp-sub.right { text-align: right; }
+.cmp-sub.left { text-align: left; }
+
+.cmp-val.win-up { color: #51cf66; }
+.cmp-val.win-down { color: #ff6b6b; }
+.cmp-val.none { color: #6a5a2a; font-size: 12px; font-weight: normal; }
+
+/* Same level on both sides, decided on xp — two 99s are not equal. The xp is
+   doing the work, so it steps forward and the identical levels step back,
+   otherwise a coloured arrow between two 99s just looks broken. */
+.cmp-row.by-xp .cmp-val { opacity: 0.6; font-weight: normal; }
+.cmp-row.by-xp .cmp-sub { color: #d9c88a; font-size: 12px; }
+
+/* The arrow points at whoever leads; its colour says what that means for the
+   player on the left. Direction and colour always agree. */
+.cmp-arrow {
+    text-align: center;
+    font-size: 15px;
+    font-weight: bold;
+    border-radius: 3px;
+    padding: 1px 0;
+}
+
+.cmp-arrow.up   { color: #51cf66; background: rgba(81, 207, 102, 0.14); }
+.cmp-arrow.down { color: #ff6b6b; background: rgba(255, 107, 107, 0.14); }
+.cmp-arrow.same { color: #74a0ff; background: rgba(116, 160, 255, 0.14); }
+
+.cmp-empty {
+    padding: 26px 10px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #8a7a4a;
+}

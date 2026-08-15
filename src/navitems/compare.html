@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LostKit - Hiscores Compare</title>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <link rel="stylesheet" type="text/css" href="compare.css" />
+</head>
+<body class="cmp-body">
+    <div class="cmp-top">
+        <div class="cmp-names">
+            <input id="p1" class="cmp-input" type="text" placeholder="Player name" spellcheck="false" autocomplete="off">
+            <button id="swap" class="cmp-swap" title="Swap sides">⇄</button>
+            <input id="p2" class="cmp-input" type="text" placeholder="Player name" spellcheck="false" autocomplete="off">
+            <button id="go" class="cmp-go">Compare</button>
+            <div class="cmp-seg" id="mode-seg">
+                <button class="cmp-seg-btn active" data-mode="levels">Levels</button>
+                <button class="cmp-seg-btn" data-mode="xp">XP</button>
+            </div>
+        </div>
+        <div id="status" class="cmp-status">Enter two names to compare.</div>
+    </div>
+
+    <div id="summary" class="cmp-summary"></div>
+    <div id="results" class="cmp-results"></div>
+
+    <script src="compare.js"></script>
+</body>
+</html>

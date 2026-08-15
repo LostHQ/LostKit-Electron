@@ -1,0 +1,379 @@
+/* Price history — its own window, so the chart can actually be read.
+   Colour is consistent throughout: gold is the price series, green a seller's
+   sale, blue a filled buy offer, amber an estimated value. */
+
+/* Small print — the plain face, see --font-small in main.css. The trade table,
+   the legend and the hover popup are all set at 10-11px and are exactly where
+   the bold face stops being readable. */
+.ph-sub,
+.ph-snap .snap-label,
+.ph-snap .snap-range,
+.ph-seg button,
+.ph-seg-label,
+.ph-zoomnote,
+.ph-zoomnote button,
+.ph-legend,
+.ph-warn,
+.ph-tip .tip-meta,
+.ph-tip .tip-row .src,
+.ph-tip .tip-note,
+.ph-tip .tip-more,
+.ph-tr,
+.axis-label {
+    /* !important beats the blanket rule buildFontCSS() injects — see the note
+       in watchlist.css. */
+    font-family: var(--font-small) !important;
+}
+
+.ph-body {
+    margin: 0;
+    padding: 12px 14px 18px;
+    background: #1d1d1a;
+    color: #f0e68c;
+    font-family: 'RS-Bold';
+    overflow-y: auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.ph-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #332b18;
+    margin-bottom: 10px;
+}
+
+.ph-sprite { width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated; flex-shrink: 0; }
+.ph-title { flex: 1; min-width: 0; }
+#item-name { font-size: 16px; font-weight: bold; color: #fff; letter-spacing: 0.3px; }
+.ph-sub { font-size: 11px; color: #8f8055; margin-top: 2px; }
+
+.ph-btn {
+    padding: 6px 12px;
+    background: url('../assets/button.jpg') repeat;
+    background-size: cover;
+    border: 2px outset #8b6914;
+    border-radius: 4px;
+    color: #f0e68c;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.ph-btn:hover { border: 2px inset #8b6914; background-color: rgba(139, 105, 20, 0.3); }
+.ph-btn:disabled { opacity: 0.5; cursor: default; border-style: outset; }
+
+/* ── Live price snapshot ────────────────────────────────────────────────── */
+/* What it costs right now, as opposed to what it sold for historically. */
+.ph-snapshot { display: flex; gap: 10px; margin-bottom: 10px; }
+.ph-snapshot:empty { display: none; }
+
+.ph-snap {
+    flex: 1;
+    padding: 8px 12px;
+    background: linear-gradient(180deg, #1f1f1b 0%, #1a1a17 100%);
+    border: 1px solid #332b18;
+    border-radius: 4px;
+}
+
+/* Border colour follows the listing type it came from, matching the chart:
+   green = sell listings, blue = buy listings. */
+.ph-snap.sell { border-left: 3px solid #5fd97a; }
+.ph-snap.buy { border-left: 3px solid #74a0ff; }
+.ph-snap.spread { border-left: 3px solid #6b5f3a; flex: 0 1 30%; }
+.ph-snap.spread .snap-value { color: #d9c88a; font-size: 17px; }
+.ph-snap.spread.flip { border-left-color: #e0a94a; }
+.ph-snap.spread.flip .snap-value { color: #e0a94a; }
+.ph-snap .snap-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: #6f6242; }
+.ph-snap .snap-value { font-size: 19px; font-weight: bold; color: #fff; margin: 1px 0; }
+.ph-snap .snap-range { font-size: 11px; color: #8f8055; }
+.ph-snap .snap-range b { color: #d9c88a; font-weight: normal; }
+.ph-snap.empty .snap-value { color: #5a5238; font-size: 14px; }
+
+/* ── Toolbar: range, filters, zoom ──────────────────────────────────────── */
+.ph-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.ph-seg { display: flex; }
+
+.ph-seg button {
+    padding: 4px 11px;
+    background: #262620;
+    border: 1px solid #463c1e;
+    color: #a89a68;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background 0.12s, color 0.12s;
+}
+
+.ph-seg button + button { border-left: none; }
+.ph-seg button:first-child { border-radius: 3px 0 0 3px; }
+.ph-seg button:last-child { border-radius: 0 3px 3px 0; }
+.ph-seg button:hover { background: #32302a; color: #f0e68c; }
+.ph-seg button.active {
+    background: linear-gradient(180deg, #6b5010, #4a3708);
+    border-color: #8b6914;
+    color: #fff;
+    font-weight: bold;
+}
+
+.ph-seg-label { font-size: 10px; color: #6f6242; margin-right: -8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.ph-zoomnote { font-size: 10px; color: #6f6242; margin-left: auto; }
+.ph-zoomnote button {
+    margin-left: 6px;
+    padding: 2px 8px;
+    background: #262620;
+    border: 1px solid #463c1e;
+    border-radius: 3px;
+    color: #a89a68;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+}
+.ph-zoomnote button:hover { color: #f0e68c; border-color: #8b6914; }
+
+/* ── Chart ──────────────────────────────────────────────────────────────── */
+.ph-chart {
+    background: linear-gradient(180deg, #1a1a17 0%, #161614 100%);
+    border: 1px solid #332b18;
+    border-radius: 5px;
+    padding: 2px;
+    overflow: hidden;
+}
+
+.ph-chart svg { width: 100%; height: auto; display: block; cursor: crosshair; }
+
+.grid-line { stroke: #262218; stroke-width: 1; }
+/* Vertical time lines sit fainter than the price ones — they orient you
+   without competing with the data. */
+.grid-line.v { stroke: #221f17; stroke-dasharray: 2 5; }
+.axis-base { stroke: #3a3220; stroke-width: 1; }
+
+.axis-label { fill: #6f6242; font-size: 12px; }   /* family set in the small-print block above */
+.axis-label.x { text-anchor: middle; }
+.axis-label.y { text-anchor: end; }
+
+/* Straight segments, not curves: a smoothed line through price points invents
+   swings that never happened and reads as decoration rather than data. */
+.price-line {
+    fill: none;
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    opacity: 0.9;
+}
+
+.pt { stroke: #16160f; stroke-width: 1.25; transition: r 0.1s; }
+.pt.sell { fill: #5fd97a; }
+.pt.buy { fill: #74a0ff; }
+.pt.estimated { fill: #e0a94a; }
+/* Part-item sale with no valuation: hollow, because the plotted figure is a
+   floor rather than a price. */
+.pt.mixed { fill: #1a1a17; stroke: #c8941c; stroke-width: 1.5; stroke-dasharray: 2.5 2; }
+
+.pt.active { stroke: #fff; stroke-width: 2; }
+/* Raised from the trade list below */
+.pt.glow { stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.85)); }
+.est-link { stroke: #e0a94a; stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.4; }
+.crosshair { stroke: #c8941c; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.5; }
+
+.ph-empty {
+    padding: 46px 16px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #8f8055;
+}
+
+/* ── Legend + warnings ──────────────────────────────────────────────────── */
+.ph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    margin: 8px 2px 0;
+    font-size: 11px;
+    color: #8f8055;
+}
+
+.ph-key { display: flex; align-items: center; gap: 5px; }
+.ph-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.ph-swatch.sell { background: #5fd97a; }
+.ph-swatch.buy { background: #74a0ff; }
+.ph-swatch.estimated { background: #e0a94a; }
+.ph-swatch.mixed { background: transparent; border: 1.5px dashed #c8941c; }
+.ph-swatch.suspect { background: transparent; border: 1.5px solid #b06a6a; }
+.ph-legend b { color: #f0e68c; }
+
+.ph-warn {
+    margin: 10px 2px 0;
+    padding: 6px 9px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: #d9a441;
+    background: rgba(200, 148, 28, 0.1);
+    border-left: 3px solid #c8941c;
+    border-radius: 2px;
+}
+
+/* ── Hover popup ────────────────────────────────────────────────────────── */
+.ph-tip {
+    display: none;
+    position: fixed;
+    z-index: 40;
+    max-width: 360px;
+    padding: 9px 11px;
+    background: #14140f;
+    border: 1px solid #8b6914;
+    border-radius: 5px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.75);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #f0e68c;
+    pointer-events: none;
+}
+
+.ph-tip.show { display: block; }
+.ph-tip .tip-head { font-weight: bold; color: #fff; margin-bottom: 2px; }
+.ph-tip .tip-meta { font-size: 11px; color: #7d6f49; margin-bottom: 6px; }
+.ph-tip .tip-row { display: flex; justify-content: space-between; gap: 14px; }
+.ph-tip .tip-row .qty { color: #d9c88a; }
+.ph-tip .tip-row .val { color: #f0e68c; white-space: nowrap; text-align: right; }
+.ph-tip .tip-row .src { display: block; color: #6a5f3c; font-size: 10px; }
+.ph-tip .tip-total {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #3d3110;
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    font-weight: bold;
+    color: #e0a94a;
+}
+.ph-tip .tip-note { margin-top: 5px; font-size: 10px; color: #6a5f3c; }
+.ph-tip .tip-sep { margin: 7px 0; border-top: 1px solid #2d2717; }
+.ph-tip .tip-more { margin-top: 6px; font-size: 10px; color: #c8941c; }
+
+/* ── Search ─────────────────────────────────────────────────────────────── */
+.ph-search { position: relative; flex-shrink: 0; }
+
+.ph-input {
+    width: 190px;
+    padding: 6px 9px;
+    background: #262620;
+    border: 1px solid #463c1e;
+    border-radius: 3px;
+    color: #f0e68c;
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+}
+
+.ph-input:focus { border-color: #c8941c; background: #2f2d25; }
+.ph-input::placeholder { color: #7d6f49; }
+
+.ph-results {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 240px;
+    z-index: 30;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #1f1f1b;
+    border: 1px solid #8b6914;
+    border-radius: 0 0 4px 4px;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+
+.ph-results.open { display: block; }
+
+.ph-result {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid #2b2718;
+}
+
+.ph-result:last-child { border-bottom: none; }
+.ph-result:hover { background: rgba(139, 105, 20, 0.35); color: #fff; }
+.ph-result img { width: 20px; height: 20px; object-fit: contain; image-rendering: pixelated; }
+
+/* ── Trade table ────────────────────────────────────────────────────────── */
+/* The list scrolls inside itself so the chart never leaves the screen while
+   you read through the trades. main.css hides scrollbars globally, so this one
+   is re-enabled deliberately. */
+.ph-trades {
+    margin-top: 14px;
+    max-height: 260px;
+    overflow-y: auto;
+    border: 1px solid #2b2718;
+    border-radius: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: #6b5010 #1a1a17;
+}
+
+.ph-trades::-webkit-scrollbar { display: block; width: 9px; }
+.ph-trades::-webkit-scrollbar-track { background: #1a1a17; border-radius: 0 4px 4px 0; }
+.ph-trades::-webkit-scrollbar-thumb { background: #5a4510; border-radius: 4px; }
+.ph-trades::-webkit-scrollbar-thumb:hover { background: #8b6914; }
+
+.ph-tr {
+    display: grid;
+    grid-template-columns: 92px 52px 118px 74px 110px 1fr;
+    gap: 8px;
+    align-items: baseline;
+    padding: 4px 6px;
+    border-bottom: 1px solid #241f14;
+    font-size: 12px;
+}
+
+.ph-tr.head {
+    color: #c8941c;
+    font-size: 11px;
+    border-bottom: 1px solid #8b6914;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #1d1d1a;
+}
+
+.ph-tr:not(.head):hover { background: rgba(139, 105, 20, 0.1); }
+.ph-tr .price { color: #fff; font-weight: bold; }
+.ph-tr .price.approx { color: #e0a94a; }
+.ph-tr .price.none { color: #6a5a2a; font-weight: normal; }
+/* A listed price we refused to believe — flagged, not hidden, so it can be
+   checked by hand if it turns out to be genuine. */
+.ph-tr .price.suspect { color: #b06a6a; font-weight: normal; font-style: italic; }
+.ph-tr .side { font-size: 11px; }
+.ph-tr .side.sell { color: #5fd97a; }
+.ph-tr .side.buy { color: #74a0ff; }
+.ph-tr .who { color: #8a9ab8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-tr .when, .ph-tr .qty { color: #7d6f49; font-size: 11px; }
+/* Two lines rather than one truncated one — offers routinely name several
+   items and "which dragonhide" matters. The full list is in the hover popup. */
+.ph-tr .offer {
+    color: #6a5f3c;
+    font-size: 11px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.3;
+}

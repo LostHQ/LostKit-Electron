@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LostKit - Price History</title>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <link rel="stylesheet" type="text/css" href="pricehistory.css" />
+</head>
+<body class="ph-body">
+    <div class="ph-head">
+        <!-- Hidden until an item loads: a src-less img draws a broken-image box -->
+        <img id="sprite" class="ph-sprite" alt="" style="visibility:hidden">
+        <div class="ph-title">
+            <div id="item-name">Price history</div>
+            <div id="subtitle" class="ph-sub">Search for any item to check its price</div>
+        </div>
+        <div class="ph-search">
+            <input id="search" class="ph-input" type="text" placeholder="Check another item…" spellcheck="false" autocomplete="off">
+            <div id="search-results" class="ph-results"></div>
+        </div>
+        <button id="refresh" class="ph-btn" title="Fetch the latest completed trades">Refresh</button>
+        <button id="open-market" class="ph-btn" title="Open this item on Markets">Markets</button>
+    </div>
+
+    <div id="snapshot" class="ph-snapshot"></div>
+
+    <div class="ph-bar">
+        <span class="ph-seg-label">Range</span>
+        <div class="ph-seg" id="ranges">
+            <button data-days="0" class="active">All</button>
+            <button data-days="90">3 months</button>
+            <button data-days="30">1 month</button>
+            <button data-days="7">1 week</button>
+        </div>
+
+        <span class="ph-seg-label">Lines</span>
+        <div class="ph-seg" id="series">
+            <button data-series="sell" class="active">Sell</button>
+            <button data-series="buy" class="active">Buy</button>
+        </div>
+
+        <span class="ph-seg-label">Paid with</span>
+        <div class="ph-seg" id="payment">
+            <button data-pay="all" class="active">Any</button>
+            <button data-pay="coins">Coins</button>
+            <button data-pay="mixed">Coins + items</button>
+            <button data-pay="items">Items only</button>
+        </div>
+
+        <span class="ph-zoomnote">scroll to zoom<button id="reset-zoom">reset</button></span>
+    </div>
+
+    <div id="chart" class="ph-chart"></div>
+    <div id="legend" class="ph-legend"></div>
+    <div id="trades" class="ph-trades"></div>
+    <div id="tip" class="ph-tip"></div>
+
+    <script src="pricehistory.js"></script>
+</body>
+</html>

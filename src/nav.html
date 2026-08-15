@@ -28,7 +28,7 @@
         </div>
         <!-- strip toggle moved to header -->
         <div class="nav-button special-link" onclick="openNav('worldswitcher')" data-nav-id="worldswitcher">
-            <img src="assets/LostCity.png" class="nav-icon">
+            <img src="assets/worldswitch.png" class="nav-icon">
             <span>Switch World</span>
         </div>
         <div class="nav-button special-link" onclick="toggleChat()" data-nav-id="chat">
@@ -44,6 +44,10 @@
             <img src="assets/creators.png" class="nav-icon" onerror="this.style.display='none'">
             <span>Creators</span>
         </div>
+        <div class="nav-button special-link" onclick="openNav('watchlist')" data-nav-id="watchlist">
+            <img src="assets/Marketwatch.png" class="nav-icon" onerror="this.style.display='none'">
+            <span>Price Watch</span>
+        </div>
         <div class="nav-button special-link" onclick="openNav('hiscores')" data-nav-id="hiscores">
             <img src="assets/hiscores.png" class="nav-icon">
             <span>Highscores</span>
@@ -54,51 +58,51 @@
         </div>
         <div class="nav-button link" data-url='https://lostcity.rs' data-nav-id="forums" data-title="Forums" onclick="addTab('https://lostcity.rs', 'Forums', 'assets/forums.png')">
             <img src="assets/forums.png" class="nav-icon">
-            <span>Forums</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Forums</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://tools.losthq.rs/cluecoordinator/' data-nav-id="coordinates" data-title="Coordinates" onclick="addTab('https://tools.losthq.rs/cluecoordinator/', 'Coordinates', 'assets/coordinates.png')">
             <img src="assets/coordinates.png" class="nav-icon">
-            <span>Coordinates</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Coordinates</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=clueguides' data-nav-id="cluehelp" data-title="Clue Help" onclick="addTab('https://2004.losthq.rs/?p=clueguides', 'Clue Help', 'assets/cluehelp.png')">
             <img src="assets/cluehelp.png" class="nav-icon">
-            <span>Clue Help</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Clue Help</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://razgals.github.io/Clue-Puzzle-Solver-Standalone/' data-nav-id="puzzlesolver" data-title="Puzzle Solver" onclick="addTab('https://razgals.github.io/Clue-Puzzle-Solver-Standalone/', 'Puzzle Solver', 'assets/puzzle.png')">
             <img src="assets/puzzle.png" class="nav-icon">
-            <span>Puzzle Solver</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Puzzle Solver</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://tools.losthq.rs/map' data-nav-id="worldmap" data-title="World Map" onclick="addTab('https://tools.losthq.rs/map', 'World Map', 'assets/worldmap.png')">
             <img src="assets/worldmap.png" class="nav-icon">
-            <span>World Map</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>World Map</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://markets.lostcity.rs' data-nav-id="markets" data-title="Markets" onclick="addTab('https://markets.lostcity.rs', 'Markets', 'assets/market.png')">
             <img src="assets/market.png" class="nav-icon">
-            <span>Markets</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Markets</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=questguides' data-nav-id="questguides" data-title="Quest Guides" onclick="addTab('https://2004.losthq.rs/?p=questguides', 'Quest Guides', 'assets/quests.png')">
             <img src="assets/quests.png" class="nav-icon">
-            <span>Quest Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Quest Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=skillguides' data-nav-id="skillguides" data-title="Skill Guides" onclick="addTab('https://2004.losthq.rs/?p=skillguides', 'Skill Guides', 'assets/skillsguides.png')">
             <img src="assets/skillsguides.png" class="nav-icon">
-            <span>Skill Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Skill Guides</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=calculators' data-nav-id="skillscalculator" data-title="Skills Calculator" onclick="addTab('https://2004.losthq.rs/?p=calculators', 'Skills Calculator', 'assets/skillscalculator.png')">
             <img src="assets/skillscalculator.png" class="nav-icon">
-            <span>Skills Calculator</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Skills Calculator</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=droptables' data-nav-id="bestiary" data-title="Bestiary" onclick="addTab('https://2004.losthq.rs/?p=droptables', 'Bestiary', 'assets/bestiary.png')">
             <img src="assets/bestiary.png" class="nav-icon">
-            <span>Bestiary</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Bestiary</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://2004.losthq.rs/?p=itemdb' data-nav-id="itemdb" data-title="Item Database" onclick="addTab('https://2004.losthq.rs/?p=itemdb', 'Item Database', 'assets/itemdb.png')">
             <img src="assets/itemdb.png" class="nav-icon">
-            <span>Item Database</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Item Database</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
         <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-nav-id="lostcitylabs" data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs', 'assets/lcl.png')">
             <img src="assets/lcl.png" class="nav-icon">
-            <span>Lost City Labs</span><span class="open-external" onclick="event.stopPropagation(); openExternal(this.parentElement.getAttribute('data-url'), this.parentElement.getAttribute('data-title'))"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+            <span>Lost City Labs</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
     </div>
     <script>
@@ -106,7 +110,16 @@
         function addTab(url, title, iconPath) { ipcRenderer.send('add-tab', url, title, iconPath); }
         function openNav(view) { ipcRenderer.send('switch-nav-view', view); }
         function toggleChat() { ipcRenderer.send('toggle-chat'); }
-        function openExternal(url, title) { ipcRenderer.send('open-external', url, title); }
+        function openExternal(url, title, iconPath) { ipcRenderer.send('open-external', url, title, iconPath); }
+
+        // Opens a nav entry in its own window, reusing that entry's own icon so
+        // the window carries the tool's icon. Opening the same entry again gives
+        // another window rather than focusing the existing one.
+        function openExternalFrom(el) {
+            if (!el) return;
+            const icon = el.querySelector('img.nav-icon');
+            openExternal(el.getAttribute('data-url'), el.getAttribute('data-title'), icon ? icon.getAttribute('src') : null);
+        }
         function openNotes() { ipcRenderer.invoke('open-notes'); }
 
         // Screenshot functions

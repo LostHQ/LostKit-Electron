@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <link rel="stylesheet" type="text/css" href="watchlist.css" />
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-button special-link" id="back-btn" onclick="goBack()">
+            <img src="../assets/back.png" class="nav-icon">
+            <span>Back</span>
+        </div>
+        <div class="nav-button special-link" onclick="refreshAll()">
+            <img src="../assets/refresh.png" class="nav-icon">
+            <span>Refresh</span>
+        </div>
+        <div class="nav-button special-link" onclick="openPriceCheck()" title="Look up any item's prices and history without watching it">
+            <img src="../assets/Pricecheck.png" class="nav-icon">
+            <span>Price check</span>
+        </div>
+        <div class="nav-button special-link" id="popout-btn" onclick="openInWindow()">
+            <img src="../assets/external-link.svg" class="nav-icon">
+            <span>Open in window</span>
+        </div>
+
+        <div class="wl-title">Quick check</div>
+
+        <div class="wl-quick">
+            <input id="quick-search" class="wl-input" type="text" placeholder="What's it worth?" autocomplete="off" spellcheck="false">
+            <div id="quick-results" class="wl-results"></div>
+
+            <div id="quick-card" class="wl-qcard">
+                <div class="wl-qhead">
+                    <img id="quick-sprite" class="wl-sprite small" alt="">
+                    <span id="quick-name" class="wl-name"></span>
+                    <span id="quick-watch" class="wl-tool" title="Watch this price — set up an alert for it below">🔔</span>
+                    <span id="quick-graph" class="wl-tool" title="Full price history and past trades">📈</span>
+                    <span id="quick-again" class="wl-tool" title="Check again">⟳</span>
+                    <span id="quick-clear" class="wl-x" title="Clear">×</span>
+                </div>
+                <div id="quick-body"></div>
+            </div>
+        </div>
+
+        <div class="wl-title">Price Watch</div>
+
+        <div class="wl-add">
+            <input id="item-search" class="wl-input" type="text" placeholder="Search for an item…" autocomplete="off" spellcheck="false">
+            <div id="search-results" class="wl-results"></div>
+
+            <div id="add-form" class="wl-form">
+                <div class="wl-picked">
+                    <img id="picked-sprite" class="wl-sprite" alt="">
+                    <span id="picked-name"></span>
+                    <span id="picked-clear" class="wl-x" title="Choose a different item">×</span>
+                </div>
+                <div class="wl-dir">
+                    <button id="dir-buy" class="wl-dir-btn active">I'm buying</button>
+                    <button id="dir-sell" class="wl-dir-btn">I'm selling</button>
+                </div>
+                <div class="wl-range">
+                    <input id="price-min" class="wl-input wl-num" type="text" inputmode="decimal" placeholder="min" title="Accepts 1200k, 12m, 1.5m">
+                    <span class="wl-dash">–</span>
+                    <input id="price-max" class="wl-input wl-num" type="text" inputmode="decimal" placeholder="max" title="Accepts 1200k, 12m, 1.5m">
+                </div>
+                <div class="wl-dev">
+                    <label for="deviation">show within</label>
+                    <input id="deviation" class="wl-input wl-dev-num" type="number" min="0" max="500" value="20">
+                    <span>% of it</span>
+                </div>
+                <div id="range-hint" class="wl-hint"></div>
+                <button id="add-btn" class="wl-btn">Watch this item</button>
+            </div>
+        </div>
+
+        <label class="wl-check">
+            <input type="checkbox" id="notify-toggle" checked>
+            <span>Desktop alerts</span>
+        </label>
+        <div id="poll-status" class="wl-poll"></div>
+
+        <div id="watches"><div class="loading">Loading…</div></div>
+    </div>
+    <script src="watchlist.js"></script>
+</body>
+</html>
