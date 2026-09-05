@@ -1,4 +1,4 @@
-/* Hiscores Compare — two mirrored tables with an arrow down the middle.
+/* Hiscores Compare - two mirrored tables with an arrow down the middle.
    Colour is read from the LEFT player's point of view, everywhere:
      green = left leads, red = left trails, blue = equal. */
 
@@ -146,7 +146,7 @@
 .cmp-val { font-size: 14px; font-weight: bold; color: #fff; text-align: center; }
 .cmp-sub { font-size: 10px; color: #8a7a4a; }
 
-/* Small print — the plain face, see --font-small in main.css */
+/* Small print - the plain face, see --font-small in main.css */
 .cmp-seg-btn,
 .cmp-status,
 .cmp-head .name .tot,
@@ -160,7 +160,7 @@
 .cmp-val.win-down { color: #ff6b6b; }
 .cmp-val.none { color: #6a5a2a; font-size: 12px; font-weight: normal; }
 
-/* Same level on both sides, decided on xp — two 99s are not equal. The xp is
+/* Same level on both sides, decided on xp - two 99s are not equal. The xp is
    doing the work, so it steps forward and the identical levels step back,
    otherwise a coloured arrow between two 99s just looks broken. */
 .cmp-row.by-xp .cmp-val { opacity: 0.6; font-weight: normal; }

@@ -25,7 +25,7 @@ if (params.get('slug')) item = { slug: params.get('slug'), name: params.get('nam
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 function formatGp(n) {
-    if (n == null) return '—';
+    if (n == null) return '-';
     if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1).replace(/\.0$/, '') + 'm';
     if (n >= 1000) return Math.round(n / 1000) + 'k';
     if (n < 10 && n % 1 !== 0) return n.toFixed(2).replace(/0$/, '');
@@ -62,7 +62,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g,
 // bones asks for "2,900 Dragon bones" where they meant 2,900 coins, and the
 // offer duly values at 2,900 times the going rate. One such point rescales the
 // whole chart and squashes three months of real prices into a flat line at the
-// bottom, so it is left off — listed underneath instead, where it can be seen
+// bottom, so it is left off - listed underneath instead, where it can be seen
 // for what it is.
 const OUTLIER_FACTOR = 20;
 let plotReference = null;
@@ -123,7 +123,7 @@ async function load(force) {
     estimateOffers();
 }
 
-// What it is going for right now — the number you actually want when pricing
+// What it is going for right now - the number you actually want when pricing
 // your own offer, as opposed to what it historically sold for.
 async function loadSnapshot() {
     const host = $('snapshot');
@@ -131,7 +131,7 @@ async function loadSnapshot() {
     const live = await ipcRenderer.invoke('market-live-prices', item.slug);
     if (!live) return;
     // Labelled by YOUR action, not the counterparty's. A "sell" listing is
-    // someone selling, which is the side you buy from — stating it the other
+    // someone selling, which is the side you buy from - stating it the other
     // way round reads as though selling is what earns you the higher number.
     host.appendChild(snapCard('sell', 'If you BUY, you pay', 'players selling', live.sell, 'min'));
     host.appendChild(snapCard('buy', 'If you SELL, you get', 'players buying', live.buy, 'max'));
@@ -162,7 +162,7 @@ function snapCard(side, label, who, s, bestSide) {
         `<div class="snap-range">avg <b>${formatGp(s.avg)}</b> · range <b>${formatGp(s.min)}</b>–` +
         `<b>${formatGp(s.max)}</b> · ${counted} ${who}` +
         `${extras.length ? ` (${extras.join(', ')})` : ''}</div>`;
-    card.title = `best ${best.toLocaleString()} gp — ` +
+    card.title = `best ${best.toLocaleString()} gp - ` +
                  `${bestSide === 'max' ? 'the most anyone is paying' : 'the cheapest on offer'}\n` +
                  `average ${s.avg.toLocaleString()} gp · median ${s.median.toLocaleString()} gp\n` +
                  `lowest ${s.min.toLocaleString()} gp · highest ${s.max.toLocaleString()} gp\n` +
@@ -176,7 +176,7 @@ function snapCard(side, label, who, s, bestSide) {
 function spreadCard(live) {
     const card = document.createElement('div');
     card.className = 'ph-snap spread';
-    // Best against best, matching the two cards beside it — the gap you would
+    // Best against best, matching the two cards beside it - the gap you would
     // actually face, not the gap between two averages.
     const buyAt = live.sell && live.sell.min;      // cheapest you can buy at
     const sellAt = live.buy && live.buy.max;       // most you can sell for
@@ -189,14 +189,14 @@ function spreadCard(live) {
     const pct = Math.round((Math.abs(diff) / buyAt) * 100);
     if (diff >= 0) {
         card.innerHTML =
-            `<div class="snap-label">Spread — cost of a round trip</div>` +
+            `<div class="snap-label">Spread - cost of a round trip</div>` +
             `<div class="snap-value">${formatGp(diff)} gp</div>` +
             `<div class="snap-range">buying costs <b>${pct}%</b> more than selling returns</div>`;
     } else {
         // Player listings are not auto-matched, so bids above asks do happen.
         card.classList.add('flip');
         card.innerHTML =
-            `<div class="snap-label">Spread — buyers are paying over the asking price</div>` +
+            `<div class="snap-label">Spread - buyers are paying over the asking price</div>` +
             `<div class="snap-value">+${formatGp(-diff)} gp</div>` +
             `<div class="snap-range">someone is paying more than the cheapest seller wants</div>`;
     }
@@ -204,7 +204,7 @@ function spreadCard(live) {
 }
 
 // Does the selected range reach further back than what we hold? If so we have
-// to go and fetch it — otherwise "3 months" just shows the same week.
+// to go and fetch it - otherwise "3 months" just shows the same week.
 function needsMoreHistory() {
     if (!rangeDays || loadedComplete || !loadedOldest) return false;
     return loadedOldest > Date.now() - rangeDays * 86400000;
@@ -225,7 +225,7 @@ async function estimateOffers() {
         id: t.id, soldAt: t.soldAt, coins: t.coins, parts: t.parts, perEach: t.perEach, lotQty: t.lotQty
     })));
 
-    // Store every result, even the ones that could not be priced — the popup
+    // Store every result, even the ones that could not be priced - the popup
     // still shows which items were valued and which were not. Only estimates
     // with a unit get plotted.
     let stored = 0;
@@ -252,7 +252,7 @@ function draw() {
     const scope = zoom ? ' in view'
         : rangeDays ? ` in the last ${rangeDays === 7 ? 'week' : rangeDays === 30 ? 'month' : '3 months'}` : '';
     $('subtitle').textContent = trades.length
-        ? `${bits.join(' · ')}${scope}${totalOnRecord > allTrades.length ? ` — fetched ${allTrades.length} of ${totalOnRecord}` : ''}`
+        ? `${bits.join(' · ')}${scope}${totalOnRecord > allTrades.length ? ` - fetched ${allTrades.length} of ${totalOnRecord}` : ''}`
         : `No trades match these filters${scope}`;
 
     $('chart').innerHTML = '';
@@ -381,7 +381,7 @@ function buildChart(priced) {
 
     // One hover layer for the whole plot: finds the nearest point rather than
     // relying on hitting a dot, so points sitting on top of each other are all
-    // reachable — they are reported together.
+    // reachable - they are reported together.
     const overlay = svgEl('rect', {
         x: M.left, y: M.top, width: PLOT_W, height: PLOT_H, fill: 'transparent', class: 'hover-layer'
     });
@@ -443,28 +443,28 @@ function tipBlock(t) {
     const rows = [];
     const outOfScale = estimateOutOfScale(t);
     const headline = t.suspect ? 'price not believed'
-        : outOfScale ? '≈ ' + formatGp(est.unit) + ' gp — off the scale'
+        : outOfScale ? '≈ ' + formatGp(est.unit) + ' gp - off the scale'
         : est && est.unit != null ? '≈ ' + formatGp(est.unit) + ' gp'
         : t.price != null ? (t.kind === 'mixed' ? '≥ ' : t.priceFromNotes ? '≈ ' : '') + formatGp(t.price) + ' gp'
         : 'no gp value';
     rows.push(`<div class="tip-head">${headline} <span style="color:${t.type === 'sell' ? '#5fd97a' : '#74a0ff'}">${t.type}</span></div>`);
     rows.push(`<div class="tip-meta">${fullDate(t.soldAt)} · ×${t.quantity.toLocaleString()} · ${escapeHtml(t.username)}</div>`);
 
-    // A token coin amount with the real number in the notes — say so plainly,
+    // A token coin amount with the real number in the notes - say so plainly,
     // and show what was actually written down either way.
     if (t.suspect) {
-        rows.push(`<div class="tip-note">Listed at ${t.listedPrice != null ? t.listedPrice.toLocaleString() : '—'} gp, ` +
+        rows.push(`<div class="tip-note">Listed at ${t.listedPrice != null ? t.listedPrice.toLocaleString() : '-'} gp, ` +
                   `nowhere near what this item goes for, and the notes don't give a real figure. ` +
                   `Left off the chart rather than believed.` +
                   (t.notes ? `<br><i>"${escapeHtml(t.notes)}"</i>` : ''));
     } else if (t.priceFromNotes) {
-        rows.push(`<div class="tip-note">Listed at ${t.listedPrice != null ? t.listedPrice.toLocaleString() : '—'} gp — ` +
+        rows.push(`<div class="tip-note">Listed at ${t.listedPrice != null ? t.listedPrice.toLocaleString() : '-'} gp - ` +
                   `a placeholder. Read as ${t.price.toLocaleString()} gp from the notes:` +
                   (t.notes ? `<br><i>"${escapeHtml(t.notes)}"</i>` : ''));
     }
 
     // On a pure coin trade the coin figure IS the disputed number, and the note
-    // above has already given it — repeating it as a line item would read as
+    // above has already given it - repeating it as a line item would read as
     // though it still counted toward something.
     const coinsDisputed = (t.suspect || t.priceFromNotes) && !(t.parts && t.parts.length);
     if (t.coins && !coinsDisputed) rows.push(`<div class="tip-row"><span class="qty">coins</span><span class="val">${t.coins.toLocaleString()} gp</span></div>`);
@@ -477,13 +477,13 @@ function tipBlock(t) {
         rows.push(`<div class="tip-total"><span>estimated worth</span><span>≈ ${est.total.toLocaleString()} gp</span></div>`);
         rows.push(`<div class="tip-note">That is ${Math.round(est.unit / plotReference).toLocaleString()}× what ` +
                   `${escapeHtml(item.name)} normally goes for (about ${formatGp(plotReference)} gp), so it is almost ` +
-                  `certainly a slip — asking for an item where coins were meant. Left off the chart so it cannot ` +
+                  `certainly a slip - asking for an item where coins were meant. Left off the chart so it cannot ` +
                   `flatten every real price on it.`);
     } else if (est && est.unit != null) {
         rows.push(`<div class="tip-total"><span>estimated worth</span><span>≈ ${est.total.toLocaleString()} gp</span></div>`);
     } else if (est && est.missing) {
         rows.push(`<div class="tip-note">${est.missing} item${est.missing > 1 ? 's have' : ' has'} no price data, ` +
-                  `so this trade has no gp value — it is left off the chart rather than guessed at.</div>`);
+                  `so this trade has no gp value - it is left off the chart rather than guessed at.</div>`);
     }
     return rows.join('');
 }
@@ -527,7 +527,7 @@ function buildLegend(priced, unpriced) {
     let html = keys.map(([c, txt]) => `<span class="ph-key"><span class="ph-swatch ${c}"></span>${txt}</span>`).join('');
     if (priced.some(t => t.estimate && t.estimate.unit != null)) {
         html += `<span class="ph-key"><span class="ph-swatch estimated"></span>` +
-                `items valued into gp — hover for the breakdown</span>`;
+                `items valued into gp - hover for the breakdown</span>`;
     }
     if (priced.some(t => t.kind === 'mixed' && !(t.estimate && t.estimate.unit != null))) {
         html += `<span class="ph-key"><span class="ph-swatch mixed"></span>coin part only, items not valued</span>`;
@@ -539,7 +539,7 @@ function buildLegend(priced, unpriced) {
     if (suspects) html += `<span class="ph-key"><span class="ph-swatch suspect"></span>` +
         `${suspects} placeholder price${suspects > 1 ? 's' : ''} ignored</span>`;
     if (offScale) html += `<span class="ph-key"><span class="ph-swatch suspect"></span>` +
-        `${offScale} off the scale — hover to see why</span>`;
+        `${offScale} off the scale - hover to see why</span>`;
     if (priced.some(t => t.priceFromNotes)) html += `<span class="ph-key"><span class="ph-swatch estimated"></span>` +
         `${priced.filter(t => t.priceFromNotes).length} read from the seller's notes</span>`;
     $('legend').innerHTML = html;
@@ -549,7 +549,7 @@ function buildWarnings(priced, trades) {
     if (needsMoreHistory()) {
         const w = document.createElement('div');
         w.className = 'ph-warn';
-        w.textContent = `Only history back to ${shortDate(loadedOldest)} has been fetched — press Refresh to pull the full range.`;
+        w.textContent = `Only history back to ${shortDate(loadedOldest)} has been fetched - press Refresh to pull the full range.`;
         $('legend').insertAdjacentElement('afterend', w);
         return;
     }
@@ -560,8 +560,8 @@ function buildWarnings(priced, trades) {
         const w = document.createElement('div');
         w.className = 'ph-warn';
         w.textContent = ageDays > 14
-            ? `Thin history — the most recent match was ${timeAgo(last.soldAt)}. Treat these figures as a rough guide.`
-            : `Only ${priced.length} priced trade${priced.length > 1 ? 's' : ''} in view — not enough to call a trend.`;
+            ? `Thin history - the most recent match was ${timeAgo(last.soldAt)}. Treat these figures as a rough guide.`
+            : `Only ${priced.length} priced trade${priced.length > 1 ? 's' : ''} in view - not enough to call a trend.`;
         $('legend').insertAdjacentElement('afterend', w);
     }
 }
@@ -577,13 +577,13 @@ function buildTable(trades) {
     });
     host.appendChild(head);
 
-    // Newest first — a list is read from the top and the latest trade is the
+    // Newest first - a list is read from the top and the latest trade is the
     // one people want.
     [...trades].reverse().forEach(t => {
         const row = document.createElement('div');
         row.className = 'ph-tr';
         // Hovering a row lights up the matching dot, so a line in the list can
-        // be located on the chart without hunting for it — and shows the same
+        // be located on the chart without hunting for it - and shows the same
         // itemised breakdown, since the "Paid with" column has to truncate.
         row.addEventListener('mouseenter', (e) => { highlightPoint(t.id, true); showTip(e, [t]); });
         row.addEventListener('mousemove', (e) => showTip(e, [t]));
@@ -605,7 +605,7 @@ function buildTable(trades) {
             price.className = 'price suspect';
             price.textContent = 'placeholder';
         } else if (estimateOutOfScale(t)) {
-            // Show what it valued at — seeing "≈ 8.4m" against a 2.9k item is
+            // Show what it valued at - seeing "≈ 8.4m" against a 2.9k item is
             // what makes the mistake obvious.
             price.className = 'price suspect';
             price.textContent = '≈ ' + formatGp(t.estimate.unit);
@@ -689,7 +689,7 @@ $('ranges').addEventListener('click', (e) => {
     if (needsMoreHistory()) load(); else draw();
 });
 
-// Series are toggles, not a choice — both on is the normal state.
+// Series are toggles, not a choice - both on is the normal state.
 $('series').addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;

@@ -4,6 +4,7 @@ const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL, fileURLToPath } = require('url');
 const version = require('../package.json').version;
 
 // Clean zoom steps: 50% to 300% in 5% increments (stored as factors: 0.50, 0.55, ..., 3.00)
@@ -50,6 +51,9 @@ log.transports.file.level = 'info';
 
 // ── Auto-updater ──────────────────────────────────────────────────────────────
 let updateAvailableVersion = null;
+// True where updates cannot be delivered at all (unsigned macOS builds), so the
+// Settings tab can say so instead of showing a check that never finds anything.
+let updaterUnavailable = false;
 let updateDownloaded       = false;
 let updateDownloading      = false;
 let updateReleaseNotes     = null;
@@ -58,7 +62,14 @@ autoUpdater.autoDownload         = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
 function setupAutoUpdater() {
-  // Always check silently — even if disabled, so settings can show available version
+  // macOS refuses unsigned updates, so checking there only produces errors and
+  // offers updates that cannot install. Skip it and report it as unavailable.
+  if (process.platform === 'darwin') {
+    log.info('Auto-updates are not available on macOS (unsigned build)');
+    updaterUnavailable = true;
+    return;
+  }
+  // Always check silently - even if disabled, so settings can show available version
   autoUpdater.on('update-available', (info) => {
     log.info('Update available:', info.version);
     updateAvailableVersion = info.version;
@@ -77,9 +88,9 @@ function setupAutoUpdater() {
       type: 'info',
       buttons: ['Download in background', 'Skip this version', 'Remind me later'],
       defaultId: 0, cancelId: 2,
-      title: 'Update Available — LostKit',
+      title: 'Update Available - LostKit',
       message: `v${info.version} is available`,
-      detail: `You're on v${version}.\n\nDownloads silently in the background. LostKit installs it automatically next time you close and reopen — no interruption now.`
+      detail: `You're on v${version}.\n\nDownloads silently in the background. LostKit installs it automatically next time you close and reopen - no interruption now.`
     });
 
     if (choice === 0) {
@@ -136,7 +147,8 @@ ipcMain.handle('get-updater-settings', () => ({
   updateReady:    updateDownloaded,
   downloading:    updateDownloading,
   updateVersion:  updateAvailableVersion,
-  releaseNotes:   updateReleaseNotes
+  releaseNotes:   updateReleaseNotes,
+  unavailable:    updaterUnavailable
 }));
 
 ipcMain.on('open-whats-new', (event, requestedVersion) => {
@@ -203,7 +215,7 @@ function loadSettings() {
   } catch (e) {
     log.error('Failed to load settings:', e);
     // Keep the unreadable file instead of silently overwriting it on the next
-    // save — it's the only copy of everything the user configured.
+    // save - it's the only copy of everything the user configured.
     try {
       if (fs.existsSync(settingsPath)) {
         const backup = settingsPath + '.corrupt';
@@ -216,7 +228,7 @@ function loadSettings() {
 
 // Atomic write: writing straight over the settings file means a crash or power
 // cut mid-write leaves a truncated file and resets every setting there is.
-// Write alongside it, then rename — rename is atomic on NTFS and POSIX alike.
+// Write alongside it, then rename - rename is atomic on NTFS and POSIX alike.
 function saveSettings() {
   const json = JSON.stringify(appSettings, null, 2);
   const tmpPath = settingsPath + '.tmp';
@@ -238,8 +250,8 @@ function saveSettingsDebounced() {
 }
 
 // Writes pending debounced changes right now. On quit the process dies with the
-// 500ms timer still pending, so anything changed in the last half second —
-// window bounds, the tab list, a zoom step — would be lost without this.
+// 500ms timer still pending, so anything changed in the last half second -
+// window bounds, the tab list, a zoom step - would be lost without this.
 function flushSettings() {
   if (saveSettingsDebounced.timer) { clearTimeout(saveSettingsDebounced.timer); saveSettingsDebounced.timer = null; }
   saveSettings();
@@ -363,12 +375,12 @@ async function pollCreatorsBackground() {
       if (liveR.status === 'fulfilled') {
         const detected = liveR.value.isLive;
         if (detected) {
-          // Confirmed live — reset strikes, update state immediately
+          // Confirmed live - reset strikes, update state immediately
           ch.isLive = true;
           ch.liveVideoId = liveR.value.liveVideoId;
           ch.offlineStrikes = 0;
         } else if (wasLive) {
-          // Was live, now check returned offline — require 3 consecutive misses
+          // Was live, now check returned offline - require 3 consecutive misses
           // before actually flipping to offline (guards against flaky /live URL checks
           // on very long streams like 24/7 channels e.g. Lo-fi Girl)
           ch.offlineStrikes = (ch.offlineStrikes || 0) + 1;
@@ -418,7 +430,7 @@ async function pollCreatorsBackground() {
 // ── Market watchlist ─────────────────────────────────────────────────────────
 // Watches player listings on markets.lostcity.rs and notifies when one lands in
 // the price range you asked for. Polling lives here rather than in the panel so
-// alerts still fire while the panel is closed — same shape as creator polling.
+// alerts still fire while the panel is closed - same shape as creator polling.
 //
 // markets.lostcity.rs is an Inertia app: the same URLs return JSON when asked
 // with the X-Inertia headers, and fall back to HTML with the payload embedded in
@@ -449,7 +461,7 @@ async function marketFetchPage(path) {
     } catch (e) { /* fall through to the HTML route */ }
   }
   // HTML route: works regardless of the version hash, and refreshes our copy.
-  // Note that either route costs the site one request and nothing else — we read
+  // Note that either route costs the site one request and nothing else - we read
   // the embedded data and never fetch the stylesheets, scripts or images a real
   // page view would. See the note above startMarketPolling for what that adds up
   // to across a user base.
@@ -466,8 +478,8 @@ async function marketFetchPage(path) {
 // A listing pays in a bundle of items, not a number. Coins are the only thing
 // that reduces to a comparable price; barter offers are surfaced in the panel
 // but never threshold-matched, because "4600 cosmic runes" isn't a gp value.
-// Per-unit price of a lot. Bulk offers — "30,000 coins for the lot of 100,000
-// flax" — work out below 1gp each, and rounding those to a whole number turned
+// Per-unit price of a lot. Bulk offers - "30,000 coins for the lot of 100,000
+// flax" - work out below 1gp each, and rounding those to a whole number turned
 // a real price into 0, which then plotted as a crash to the floor. Small values
 // keep their fraction; a genuine zero is no price at all.
 function perUnitPrice(coinTotal, perEach, lotQty) {
@@ -526,7 +538,7 @@ function noteAmounts(notes) {
 
 // The going rate to judge listings against. A median needs a real sample to
 // mean anything, so below three prices we take whatever context the caller can
-// give us — and with none, we decline to judge rather than guess.
+// give us - and with none, we decline to judge rather than guess.
 function referencePrice(prices, ...fallbacks) {
   const clean = prices.filter(p => p != null && p > 0);
   if (clean.length >= 3) {
@@ -538,9 +550,9 @@ function referencePrice(prices, ...fallbacks) {
 }
 
 // Judges one price. Returns what to use and how it was arrived at:
-//   ok      — believed as listed
-//   notes   — the coin field was a placeholder; the real number came from notes
-//   suspect — far off the market and the notes do not explain it, so it must be
+//   ok      - believed as listed
+//   notes   - the coin field was a placeholder; the real number came from notes
+//   suspect - far off the market and the notes do not explain it, so it must be
 //             kept out of averages and must never trigger an alert
 function screenPrice(price, notes, reference) {
   if (price == null) return { price: null, source: 'ok' };
@@ -550,7 +562,7 @@ function screenPrice(price, notes, reference) {
 
   const amounts = noteAmounts(notes);
   // Strongest tell by far: the notes repeat the listed digits with the
-  // magnitude that was left off — "169 Coins" alongside "169m offer".
+  // magnitude that was left off - "169 Coins" alongside "169m offer".
   const sameDigits = amounts.find(a =>
     a.scaled && Math.round(a.mantissa) === Math.round(price) && plausible(a.value));
   if (sameDigits) return { price: sameDigits.value, source: 'notes' };
@@ -563,7 +575,7 @@ function screenPrice(price, notes, reference) {
 }
 
 // A watch on "buy" means the user wants to buy, so it scans other people's
-// SELL listings — and vice versa. Getting this backwards is the easiest way to
+// SELL listings - and vice versa. Getting this backwards is the easiest way to
 // make the whole feature useless, so it is stated once, here.
 function listingTypeWatched(direction) { return direction === 'buy' ? 'sell' : 'buy'; }
 
@@ -576,11 +588,11 @@ function priceInRange(price, watch) {
 
 // How far outside the range a listing may sit and still be worth showing. Set a
 // max of 10m on a dragon chainbody and you do not want to read about the 40m
-// ones — but you probably do want to see the 11m one.
+// ones - but you probably do want to see the 11m one.
 function priceWithinDeviation(price, watch) {
   if (price == null) return false;
   const dev = Number.isFinite(watch.deviation) ? watch.deviation : 20;
-  // With no bounds at all there is nothing to deviate from — show everything.
+  // With no bounds at all there is nothing to deviate from - show everything.
   if (watch.min == null && watch.max == null) return true;
   const factor = 1 + Math.max(0, dev) / 100;
   if (watch.max != null && price > watch.max * factor) return false;
@@ -607,7 +619,7 @@ async function refreshMarketWatch(watch) {
     }));
 
   // Placeholder prices are screened before anything is sorted, matched or
-  // alerted on — an unscreened "169 Coins" on a santa hat is both the cheapest
+  // alerted on - an unscreened "169 Coins" on a santa hat is both the cheapest
   // listing on the page and a notification saying you just found one for 169gp.
   // With too few listings to form a median, the range the user asked for is the
   // best statement of what they think the item is worth.
@@ -651,7 +663,7 @@ async function pollMarketWatches({ notify = true } = {}) {
           const best = fresh[0];
           const verb = watch.direction === 'buy' ? 'selling' : 'buying';
           fireMarketNotif(
-            `${watch.name} — ${best.price.toLocaleString()} gp`,
+            `${watch.name} - ${best.price.toLocaleString()} gp`,
             `${best.username} is ${verb} ${best.quantity.toLocaleString()}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`,
             watch.slug
           );
@@ -697,7 +709,7 @@ function fireMarketNotif(title, body, slug) {
 //   30 users x 5 watches = 150 requests / 300s = 0.5 requests per second
 //
 // And each of those is cheaper than a person opening the same page in a browser.
-// marketFetchPage pulls the Inertia payload only — no CSS, no scripts, none of
+// marketFetchPage pulls the Inertia payload only - no CSS, no scripts, none of
 // the twenty-odd assets a real page view drags along. So the whole background
 // load of a modest user base costs their server about what a couple of people
 // casually clicking around the site would.
@@ -718,7 +730,7 @@ function startCreatorPolling() {
 }
 
 // ── Font injection ────────────────────────────────────────────────────────────
-// RS-Bold is the interface font throughout — the old Quill option was dropped
+// RS-Bold is the interface font throughout - the old Quill option was dropped
 // for being hard to read. This still runs because it also carries the size
 // bumps, and because it has to out-specify the stopwatch panel, which forces
 // font-family: RS-Plain !important on its own elements.
@@ -727,7 +739,7 @@ const FONT_STYLE_ID = '__lk-font-override__';
 function buildFontCSS() {
   return [
     // Deliberately blunt, and it overrides the stylesheets. The panels opt small
-    // print back out with their own !important rules on --font-small — see the
+    // print back out with their own !important rules on --font-small - see the
     // small-print block at the top of watchlist.css.
     "body, body * { font-family: 'RS-Bold', sans-serif !important; }",
     ".stopwatch-panel, .stopwatch-panel .mode-indicator, .stopwatch-panel .section-title,",
@@ -779,8 +791,9 @@ if (require('electron-squirrel-startup')) app.quit();
 
 let mainWindow;
 let settingsWindow = null;
+let addToolWindow = null;
 let afkGameClick = false;
-let afkInputType = 'click'; // game click/keypress — hover mode removed
+let afkInputType = 'click'; // game click/keypress - hover mode removed
 let afkHover = false;
 let hoverPaused = false;
 let soundAlert = false;
@@ -788,14 +801,18 @@ let soundVolume = 60;
 let customSoundPath = '';
 let defaultPackagedSoundPath = '';
 
-// Game-click AFK timer (legacy — kept for stopwatch panel IPC compatibility)
+// Game-click AFK timer (legacy - kept for stopwatch panel IPC compatibility)
 let gameClickTimerRunning = false;
 let gameClickTimerInterval = null;
 let gameClickTimerSeconds = 0;
+// Wall-clock start of the current count. Counting interval ticks instead lost
+// time whenever the main process was busy, since a late tick still counts one.
+// Matches how the background timer already works.
+let gameClickTimerStartTime = 0;
 let gameClickAlertTriggeredInCycle = false;
 let alertThreshold = 10;
 
-// Unified background timer — drives the stopwatch panel display AND the titlebar
+// Unified background timer - drives the stopwatch panel display AND the titlebar
 let backgroundTimerInterval = null;
 let backgroundTimerSeconds = 0;
 let backgroundTimerMode = 'afk';
@@ -860,7 +877,7 @@ function formatWindowTitleTime(totalSeconds) {
 function updateWindowTitleWithTimer(running, seconds, mode, countdownTime) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const worldTitle = getCurrentWorldTitle();
-  const latencyStr = lastKnownLatency != null ? `${lastKnownLatency}ms` : '—ms';
+  const latencyStr = lastKnownLatency != null ? `${lastKnownLatency}ms` : '-ms';
   let title = `${baseWindowTitle}  |  ${worldTitle}  |  ${latencyStr}`;
   if (running) {
     let modeLabel, displayValue;
@@ -886,14 +903,33 @@ let soundManagerWindow = null, notesWindow = null;
 const defaultWorldUrl = 'https://w2-2004.lostcity.rs/rs2.cgi?plugin=0&world=2&lowmem=0';
 const defaultWorldTitle = 'W2 HD';
 // Icon shown on the unclosable game view tab (the world switcher nav button uses
-// assets/worldswitch.png — a different icon).
+// assets/worldswitch.png - a different icon).
 const MAIN_TAB_ICON = 'assets/LostCity.png';
 let tabs = [{ id: 'main', url: defaultWorldUrl, title: defaultWorldTitle, icon: MAIN_TAB_ICON }];
 let tabByUrl = new Map([[defaultWorldUrl, 'main']]);
 // url -> Set<BrowserWindow>: several external windows may share the same URL.
 // Per-URL bounds/zoom are written by whichever window of that URL closes last.
 let externalWindowsByUrl = new Map();
+// Toolbar webContents id → a lookup for the page that toolbar drives, so a
+// button press acts on its own page and no other tab's or window's.
+const toolbarTargets = new Map();
+const TOOLBAR_HEIGHT = 34;
 let currentTab = 'main';
+// ── Split view ── (all parts of this feature carry this heading)
+// Shows one tab beside another. Off until asked for.
+let splitTabId = null;          // the tab shown beside the active one, or null
+let splitGrewWindowBy = 0;      // px of window width borrowed to fit the split
+let splitLocked = false;        // frozen pair: clicking a third tab leaves the
+let splitLockedPair = null;     // split intact instead of pulling that tab in
+let splitOtherId = null;        // the tab holding the side that follows your
+                                // clicks, remembered so that clicking the other
+                                // pane keeps both on screen instead of collapsing
+const SPLIT_MIN_PANE = 480;     // what a split needs to be worth starting
+const SPLIT_DRAG_MIN = 220;     // but once split, the border can be dragged this
+                                // far - the player decides how to trade the space,
+                                // including squeezing the game if that suits them
+const SPLIT_DIVIDER = 6;        // the seam, left unpainted by both views so the
+                                // window's own page shows through and can be grabbed
 let chatVisible = true;
 let chatHeightValue = 300;
 
@@ -903,11 +939,44 @@ let chatHeightValue = 300;
 // title, and as the window icon of a detached / external window.
 function resolveAssetIcon(iconPath) {
   if (!iconPath || typeof iconPath !== 'string') return null;
+  // Custom tool icons live in the user data dir and travel as file:// urls.
+  if (iconPath.startsWith('file://')) return resolveCustomIcon(iconPath);
   const rel = iconPath.replace(/^[\\/]+/, '');
   const full = path.normalize(path.join(__dirname, rel));
   const assetsRoot = path.normalize(path.join(__dirname, 'assets'));
   if (!full.startsWith(assetsRoot)) return null;      // keep lookups inside src/assets
   try { return fs.existsSync(full) ? full : null; } catch (e) { return null; }
+}
+
+// Electron's default menu carries Reload, Force Reload and back/forward
+// accelerators, which fire against whatever has focus. Replace it with a menu
+// that has no navigation roles. Dev tools stay.
+function installAppMenu() {
+  const template = [];
+
+  // macOS keeps Quit, Hide and About in the app menu; without one there is no
+  // Cmd+Q. Neither this nor the window menu navigates anything.
+  if (process.platform === 'darwin') template.push({ role: 'appMenu' });
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template.concat([
+    {
+      // Editing roles only - they keep clipboard shortcuts working in the notes
+      // and settings windows. Nothing here navigates anything.
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    }
+  ].concat(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []))));
 }
 
 function applyWindowIcon(win, iconPath) {
@@ -917,6 +986,192 @@ function applyWindowIcon(win, iconPath) {
     const img = nativeImage.createFromPath(full);
     if (!img.isEmpty()) win.setIcon(img);
   } catch (e) { log.warn('Failed to set window icon:', e.message); }
+}
+
+// ── Custom tools ─────────────────────────────────────────────────────────────
+// User-added pages. Both halves live in the user data dir, not in src/, which
+// an update replaces:
+//   list  -> .lostkit-settings.json
+//   icons -> %APPDATA%/LostKit/toolicons
+// A custom tool is a url/title/icon triple, the same shape as a built-in nav
+// button, so tabs, windows, tear-off and docking need no special cases.
+const customIconsDir = path.join(
+  process.env.APPDATA || path.join(process.env.HOME || process.env.USERPROFILE || '.', '.config'),
+  'LostKit', 'toolicons'
+);
+const CUSTOM_TOOL_FALLBACK_ICON = 'assets/utilities.png';
+
+function ensureCustomIconsDir() {
+  try { fs.mkdirSync(customIconsDir, { recursive: true }); return true; }
+  catch (e) { log.warn('Could not create tool icons dir:', e.message); return false; }
+}
+
+// Custom icons are addressed as file:// URLs so the nav panel and tab strip can
+// use them as an <img src> directly, the same way they use "assets/…" paths.
+function customIconUrl(filename) {
+  try { return pathToFileURL(path.join(customIconsDir, filename)).href; } catch (e) { return null; }
+}
+
+function resolveCustomIcon(fileUrl) {
+  try {
+    const full = path.normalize(fileURLToPath(fileUrl));
+    // Trailing separator so a sibling dir (…/toolicons-other) cannot pass as inside.
+    const root = path.normalize(customIconsDir) + path.sep;
+    if (!full.startsWith(root)) return null;
+    return fs.existsSync(full) ? full : null;
+  } catch (e) { return null; }
+}
+
+// A url the user typed: "mytool.example" and "localhost:8080" should both work.
+function normalizeToolUrl(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : 'https://' + raw;
+  try {
+    const u = new URL(withScheme);
+    if (!/^https?:$/i.test(u.protocol)) return null;   // only pages, no file:// or app: schemes
+    if (!u.hostname) return null;
+    return u.href;
+  } catch (e) { return null; }
+}
+
+// Loads the page off-screen to read its title and favicon, then discards the
+// window. Always resolves by timeoutMs so a slow site cannot hang the add.
+function fetchSiteMeta(url, timeoutMs = 12000) {
+  return new Promise(resolve => {
+    const result = { title: null, iconUrl: null };
+    let win = null, settled = false, graceTimer = null;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline); clearTimeout(graceTimer);
+      try { if (win && !win.isDestroyed()) win.destroy(); } catch (e) {}
+      resolve(result);
+    };
+    const deadline = setTimeout(finish, timeoutMs);
+
+    try {
+      win = new BrowserWindow({
+        show: false, width: 1024, height: 768,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true }
+      });
+      win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      win.webContents.on('page-title-updated', (e, title) => { if (title) result.title = title; });
+      win.webContents.on('page-favicon-updated', (e, icons) => {
+        if (Array.isArray(icons) && icons.length) result.iconUrl = icons[icons.length - 1];
+      });
+      win.webContents.on('did-finish-load', () => {
+        if (!result.title) { try { result.title = win.webContents.getTitle() || null; } catch (e) {} }
+        // The favicon event usually lands just after the load finishes.
+        graceTimer = setTimeout(finish, result.iconUrl ? 300 : 2500);
+      });
+      win.webContents.on('did-fail-load', (e, code, desc, failedUrl, isMainFrame) => {
+        if (isMainFrame) { log.warn('Tool page failed to load:', desc); finish(); }
+      });
+      win.loadURL(url);
+    } catch (e) {
+      log.warn('Could not inspect tool page:', e.message);
+      finish();
+    }
+  });
+}
+
+const ICON_EXT_BY_TYPE = {
+  'image/png': '.png', 'image/x-icon': '.ico', 'image/vnd.microsoft.icon': '.ico',
+  'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/svg+xml': '.svg', 'image/webp': '.webp'
+};
+const MAX_ICON_BYTES = 2 * 1024 * 1024;
+
+// Writes the site's icon into the icons dir and returns its filename, or null.
+async function downloadToolIcon(iconUrl, toolId) {
+  if (!iconUrl || !ensureCustomIconsDir()) return null;
+  try {
+    let buf, ext = '';
+
+    if (/^data:/i.test(iconUrl)) {
+      const m = /^data:([^;,]+)?(;base64)?,(.*)$/is.exec(iconUrl);
+      if (!m) return null;
+      buf = Buffer.from(m[2] ? m[3] : decodeURIComponent(m[3]), m[2] ? 'base64' : 'utf8');
+      ext = ICON_EXT_BY_TYPE[(m[1] || '').toLowerCase()] || '.png';
+    } else {
+      const res = await fetch(iconUrl, { redirect: 'follow' });
+      if (!res.ok) return null;
+      buf = Buffer.from(await res.arrayBuffer());
+      ext = ICON_EXT_BY_TYPE[(res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()] || '';
+    }
+
+    if (!buf || !buf.length || buf.length > MAX_ICON_BYTES) return null;
+    if (!ext) {
+      const m = /\.(png|ico|jpe?g|gif|svg|webp)(?:[?#]|$)/i.exec(iconUrl);
+      ext = m ? '.' + m[1].toLowerCase().replace('jpeg', 'jpg') : '.png';
+    }
+
+    // One icon per tool. The name carries a stamp: renderers address icons by
+    // path, so reusing the name would show the cached old image.
+    removeToolIconFiles(toolId);
+    const filename = toolId + '.' + Date.now().toString(36) + ext;
+    fs.writeFileSync(path.join(customIconsDir, filename), buf);
+    return filename;
+  } catch (e) {
+    log.warn('Could not download tool icon:', e.message);
+    return null;
+  }
+}
+
+function removeToolIconFiles(toolId) {
+  try {
+    if (!fs.existsSync(customIconsDir)) return;
+    fs.readdirSync(customIconsDir)
+      .filter(f => f === toolId || f.startsWith(toolId + '.'))
+      .forEach(f => { try { fs.unlinkSync(path.join(customIconsDir, f)); } catch (e) {} });
+  } catch (e) {}
+}
+
+// Grabs the icon for a tool, falling back to the site's /favicon.ico when the
+// page never advertised one.
+async function captureToolIcon(url, toolId, knownIconUrl) {
+  let filename = knownIconUrl ? await downloadToolIcon(knownIconUrl, toolId) : null;
+  if (!filename) {
+    try { filename = await downloadToolIcon(new URL('/favicon.ico', url).href, toolId); } catch (e) {}
+  }
+  return filename;
+}
+
+function getCustomTools() {
+  if (!Array.isArray(appSettings.customTools)) appSettings.customTools = [];
+  return appSettings.customTools;
+}
+
+// Shape the nav panel and tab strip consume: an icon they can render right now,
+// falling back to a generic one when the site had none or the file went missing.
+function customToolsForRenderer() {
+  return getCustomTools().map(t => {
+    const url = t.icon ? customIconUrl(t.icon) : null;
+    return { id: t.id, url: t.url, title: t.title, icon: (url && resolveCustomIcon(url)) ? url : CUSTOM_TOOL_FALLBACK_ICON };
+  });
+}
+
+// Drop a removed tool's id from the hidden list, or a later tool reusing that id
+// would come back invisible.
+function forgetHiddenNavButton(toolId) {
+  const navId = 'custom:' + toolId;
+  if (!Array.isArray(appSettings.hiddenNavButtons)) return;
+  const remaining = appSettings.hiddenNavButtons.filter(x => x !== navId);
+  if (remaining.length === appSettings.hiddenNavButtons.length) return;
+  appSettings.hiddenNavButtons = remaining;
+  if (navView && navView.webContents && !navView.webContents.isDestroyed())
+    navView.webContents.send('update-nav-visibility', remaining);
+}
+
+function broadcastCustomTools() {
+  const tools = customToolsForRenderer();
+  if (navView && navView.webContents && !navView.webContents.isDestroyed())
+    navView.webContents.send('custom-tools-updated', tools);
+  if (settingsWindow && !settingsWindow.isDestroyed())
+    settingsWindow.webContents.send('custom-tools-updated', tools);
+  if (addToolWindow && !addToolWindow.isDestroyed())
+    addToolWindow.webContents.send('custom-tools-updated', tools);
 }
 
 loadSettings();
@@ -964,8 +1219,9 @@ function getViewWebContents() {
   if (mainWindow && !mainWindow.isDestroyed()) contents.push(mainWindow.webContents);
   if (navView && navView.webContents) contents.push(navView.webContents);
   if (chatView && chatView.webContents) contents.push(chatView.webContents);
-  primaryViews.forEach(({ view }) => {
+  primaryViews.forEach(({ view, toolbar }) => {
     if (view && view.webContents) contents.push(view.webContents);
+    if (toolbar && toolbar.webContents) contents.push(toolbar.webContents);
   });
   return contents.filter(wc => wc && !wc.isDestroyed());
 }
@@ -984,6 +1240,52 @@ function scheduleRendererResizeEvents() {
   }, 16);
 }
 
+// ── Split view ──
+// The two tabs on screen as panes, or null for a single view.
+// Unlocked, the pair follows the active tab. Locked, it is frozen and a third
+// tab opens on its own.
+function splitPairIds() {
+  if (!splitTabId) return null;
+  if (appSettings.splitViewEnabled === false) return null;
+  const present = id => primaryViews.some(p => p.id === id);
+
+  if (splitLocked && splitLockedPair) {
+    const { leftId, rightId } = splitLockedPair;
+    if (!present(leftId) || !present(rightId)) return null;
+    // Away from the pair, the tab you clicked gets the whole area to itself.
+    if (currentTab !== leftId && currentTab !== rightId) return null;
+    return { leftId, rightId };
+  }
+
+  if (!present(splitTabId)) return null;
+
+  // Either tab of the pair shows the pair. Clicking the pinned side falls back
+  // to the last tab that held the other side, instead of collapsing to one.
+  const other = currentTab === splitTabId ? splitOtherId : currentTab;
+  if (!other || other === splitTabId || !present(other)) return null;
+
+  // The game joins a split only as the side you deliberately picked, so clicking
+  // the game tab never drags it into a split of two tools.
+  if (other === 'main') return null;
+
+  // And when it is in the split, it keeps the left side.
+  const gameOnLeft = splitTabId === 'main';
+  return {
+    leftId: gameOnLeft ? 'main' : other,
+    rightId: gameOnLeft ? other : splitTabId
+  };
+}
+
+// The geometry of those two panes, or null when the window is too narrow.
+function splitPanes(primaryWidth) {
+  const usable = primaryWidth - SPLIT_DIVIDER;
+  if (usable < SPLIT_DRAG_MIN * 2) return null;   // no longer room for two panes at all
+  const ratio = Math.min(0.9, Math.max(0.1, appSettings.splitRatio || 0.5));
+  const leftWidth = Math.max(SPLIT_DRAG_MIN, Math.min(usable - SPLIT_DRAG_MIN, Math.round(usable * ratio)));
+  const rightWidth = usable - leftWidth;
+  return { leftX: 0, leftWidth, rightX: leftWidth + SPLIT_DIVIDER, rightWidth };
+}
+
 function updateBounds() {
   if (!mainWindow || mainWindow.isDestroyed() || !navView || !chatView) return;
 
@@ -1000,7 +1302,33 @@ function updateBounds() {
   const primaryWidth = Math.max(0, width - navWidth);
   const primaryHeight = Math.max(0, height - tabHeight - chatHeight - dividerHeight);
 
-  primaryViews.forEach(({ view }) => view.setBounds({ x: 0, y: tabHeight, width: primaryWidth, height: primaryHeight }));
+  // A tab with a toolbar gives up its top strip to it; the game view has none
+  // and keeps the whole area. Two panes share the width, and the strip is told
+  // which tab is on which side.
+  const pair = splitPairIds();
+  const panes = pair ? splitPanes(primaryWidth) : null;
+  const splitLeftId = panes ? pair.leftId : null;
+  const splitRightId = panes ? pair.rightId : null;
+  primaryViews.forEach(({ id, view, toolbar }) => {
+    let paneX = 0, paneWidth = primaryWidth;
+    if (panes) {
+      if (id === splitLeftId) { paneX = panes.leftX; paneWidth = panes.leftWidth; }
+      else if (id === splitRightId) { paneX = panes.rightX; paneWidth = panes.rightWidth; }
+    }
+    if (toolbar) {
+      const barHeight = Math.min(TOOLBAR_HEIGHT, primaryHeight);
+      toolbar.setBounds({ x: paneX, y: tabHeight, width: paneWidth, height: barHeight });
+      view.setBounds({ x: paneX, y: tabHeight + barHeight, width: paneWidth, height: Math.max(0, primaryHeight - barHeight) });
+    } else {
+      view.setBounds({ x: paneX, y: tabHeight, width: paneWidth, height: primaryHeight });
+    }
+    // Visibility comes from the pair, not from currentTab/splitTabId: with the
+    // game pinned and its own tab active those are the same id, and the other
+    // pane matched neither, leaving a hidden view holding half the window.
+    const visible = panes ? (id === splitLeftId || id === splitRightId) : (id === currentTab);
+    view.setVisible(visible);
+    if (toolbar) toolbar.setVisible(visible);
+  });
   if (navPanelMode !== 'collapsed') {
     navView.setVisible(true);
     navView.setBounds({ x: primaryWidth, y: 0, width: navWidth, height: height });
@@ -1008,6 +1336,20 @@ function updateBounds() {
     navView.setVisible(false);
   }
   chatView.setBounds({ x: 0, y: height - chatHeight, width: primaryWidth, height: chatHeight });
+  // What the tab strip marks. A locked pair keeps its marks while a third tab is
+  // open, since one click brings it back; `showing` tells the strip to dim them.
+  const lockedPairIntact = splitLocked && splitLockedPair &&
+    primaryViews.some(p => p.id === splitLockedPair.leftId) &&
+    primaryViews.some(p => p.id === splitLockedPair.rightId);
+  mainWindow.webContents.send('update-split-tabs',
+    panes ? { leftId: splitLeftId, rightId: splitRightId, locked: splitLocked, showing: true }
+    : (lockedPairIntact ? { leftId: splitLockedPair.leftId, rightId: splitLockedPair.rightId, locked: true, showing: false }
+    : null));
+  // ── Split view ── the seam the player drags to trade width between panes.
+  mainWindow.webContents.send('update-split-divider', panes ? {
+    x: panes.rightX - SPLIT_DIVIDER, y: tabHeight, width: SPLIT_DIVIDER, height: primaryHeight,
+    usable: primaryWidth - SPLIT_DIVIDER   // what a drag position is measured against
+  } : null);
   mainWindow.webContents.send('update-resizer', chatHeight);
   scheduleRendererResizeEvents();
 }
@@ -1221,7 +1563,7 @@ app.whenReady().then(() => {
     saveSettingsDebounced();
 
     // Adjust the actual native window size so toggling between strip and
-    // expanded does not reduce the primary view width — grow/shrink the
+    // expanded does not reduce the primary view width - grow/shrink the
     // window instead, keeping the game canvas size intact.
     try {
       const bounds = mainWindow.getBounds();
@@ -1258,6 +1600,7 @@ app.whenReady().then(() => {
     webPreferences: { nodeIntegration: true, contextIsolation: false },
     title: `LostKit 2 v${version} - by LostHQ Team`
   });
+  installAppMenu();
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
   applyAlwaysOnTop(mainWindow);
   mainWindow.webContents.on('did-finish-load', () => {
@@ -1269,7 +1612,7 @@ app.whenReady().then(() => {
       navView.webContents.send('chat-toggled', chatVisible, chatHeightValue);
     }
     // Reopen the tabs from last quit. Runs here because the tab strip only
-    // exists once index.html has loaded — earlier sends would be dropped.
+    // exists once index.html has loaded - earlier sends would be dropped.
     restoreTabs();
     scheduleWindowManagerReflow();
   });
@@ -1287,8 +1630,28 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('get-screenshot-folder', () => getScreenshotFolder());
   ipcMain.on('open-screenshot-folder', () => shell.openPath(getScreenshotFolder()));
+  // System calculator. Windows and macOS have one each; on Linux try the common
+  // desktop calculators and launch the first that is installed.
+  const LINUX_CALCULATORS = ['gnome-calculator', 'kcalc', 'mate-calc', 'galculator', 'qalculate-gtk', 'xcalc'];
+
   ipcMain.on('open-calculator', () => {
-    require('child_process').exec('calc.exe', { windowsHide: false });
+    const { exec } = require('child_process');
+
+    if (process.platform === 'win32') { exec('calc.exe', { windowsHide: false }); return; }
+    if (process.platform === 'darwin') { exec('open -a Calculator'); return; }
+
+    (function tryNext(i) {
+      if (i >= LINUX_CALCULATORS.length) {
+        log.warn('No calculator found. Tried: ' + LINUX_CALCULATORS.join(', '));
+        return;
+      }
+      const name = LINUX_CALCULATORS[i];
+      exec('which ' + name, (err) => {
+        if (err) { tryNext(i + 1); return; }
+        exec(name);
+        log.info('Opened calculator: ' + name);
+      });
+    })(0);
   });
   function takeScreenshot() {
     const mainPV = primaryViews.find(p => p.id === currentTab);
@@ -1545,14 +1908,12 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   mainView.webContents.loadURL(startWorldUrl);
   mainView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
   mainView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  // Clear history after initial load so back/forward are dead from the start
-  mainView.webContents.once('did-finish-load', () => { try { const wc = mainView.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory(); } catch(e) {} });
   mainWindow.contentView.addChildView(mainView);
   primaryViews.push({ id: 'main', view: mainView });
   if (appSettings.zoomFactor && appSettings.zoomFactor !== 1) mainView.webContents.once('did-finish-load', () => { try { mainView.webContents.setZoomFactor(appSettings.zoomFactor); } catch (e) {} });
   if (appSettings.tabZoom && appSettings.tabZoom[startWorldUrl]) mainView.webContents.once('did-finish-load', () => { try { mainView.webContents.setZoomFactor(appSettings.tabZoom[startWorldUrl]); } catch (e) {} });
 
-  // ── AFK input detection — host-level only, nothing injected into the game ──
+  // ── AFK input detection - host-level only, nothing injected into the game ──
   // before-input-event fires in the main process before the event reaches the
   // page, so we never need to touch the game's DOM or JS context.
   mainView.webContents.on('before-input-event', (event, input) => {
@@ -1585,7 +1946,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         return;
       }
 
-      // ── Ctrl+0 — reset zoom to 100% ──────────────────────────────────────
+      // ── Ctrl+0 - reset zoom to 100% ──────────────────────────────────────
       if (ctrl && key === '0') {
         event.preventDefault();
         mainView.webContents.setZoomFactor(1.0);
@@ -1613,7 +1974,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     log.info('Blocked page-initiated navigation on game view');
   });
 
-  // Track history-state navigations (pushState/replaceState) — e.g. fullscreen toggle.
+  // Track history-state navigations (pushState/replaceState) - e.g. fullscreen toggle.
   // We intentionally do NOT reload here: did-navigate-in-page never unloads the page,
   // so there is nothing to "restore". Calling loadURL() here was causing a full page
   // reload whenever the game's fullscreen button fired a pushState URL change.
@@ -1628,6 +1989,30 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     }
   });
 
+  // ── Game view: no navigation ───────────────────────────────────────────────
+  // Only the world switcher may change this view, via loadURL(). Keyboard is
+  // handled in before-input-event above; the rest is:
+  //   1. history emptied after every load, so there is no entry to go back to
+  //   2. app-command, which is how thumb and media buttons arrive (never as key
+  //      events, so before-input-event cannot see them)
+  //   3. will-frame-navigate, for main-frame attempts will-navigate misses
+  const clearGameHistory = () => {
+    try {
+      const wc = mainView.webContents;
+      if (wc.navigationHistory?.clear) wc.navigationHistory.clear();
+      else if (wc.clearHistory) wc.clearHistory();
+    } catch (e) {}
+  };
+  mainView.webContents.on('did-finish-load', clearGameHistory);
+  mainView.webContents.on('did-navigate', clearGameHistory);
+
+  mainView.webContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) {
+      details.preventDefault();
+      log.info('Blocked frame navigation on game view');
+    }
+  });
+
   // ── Suppress right-click context menu on the game view ────────────────────
   // Chromium's default context menu includes Back / Forward / Reload entries.
   // Blocking it entirely prevents accidental navigation via right-click.
@@ -1635,10 +2020,22 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     event.preventDefault();
   });
 
+  // Mouse thumb and media back/forward keys arrive as app-commands, not key
+  // events. Swallowed on the game tab, applied to any other tab.
+  mainWindow.on('app-command', (event, command) => {
+    if (command !== 'browser-backward' && command !== 'browser-forward') return;
+    event.preventDefault();                       // never let Chromium act on it
+    if (currentTab === 'main') return;            // the game view: swallowed
+    navigateTab(currentTab, command === 'browser-backward' ? 'back' : 'forward');
+  });
+
   const saveMainWindowBounds = () => {
     if (mainWindow && !mainWindow.isMinimized() && !mainWindow.isMaximized()) {
       const b = mainWindow.getBounds();
-      appSettings.mainWindow = { width: b.width, height: b.height, x: b.x, y: b.y };
+      // Width borrowed for a split is not the player's own size. Subtract it,
+      // or quitting while split widens the window again every launch.
+      const ownWidth = Math.max(800, b.width - splitGrewWindowBy);
+      appSettings.mainWindow = { width: ownWidth, height: b.height, x: b.x, y: b.y };
       saveSettingsDebounced();
     }
   };
@@ -1662,7 +2059,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   });
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // GAME-CLICK AFK TIMER (legacy — kept for stopwatch panel IPC compatibility)
+  // GAME-CLICK AFK TIMER (legacy - kept for stopwatch panel IPC compatibility)
   // ══════════════════════════════════════════════════════════════════════════════
 
   function startGameClickTimer() {
@@ -1671,16 +2068,27 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     gameClickTimerSeconds = 0;
     gameClickAlertTriggeredInCycle = false;
     console.log('Starting game-click background timer');
-    gameClickTimerInterval = setInterval(tickGameClickTimer, 1000);
+    armGameClickTimer();
     // Only update titlebar if background timer isn't running (avoids conflict)
     if (!backgroundTimerRunning) updateWindowTitleWithTimer(true, 0, 'afk', 90);
   }
 
+  // Arms the ticker without disturbing the current count. Polls sub-second so a
+  // boundary is reported promptly; the tick is a no-op until the second changes.
+  function armGameClickTimer() {
+    if (gameClickTimerInterval) clearInterval(gameClickTimerInterval);
+    gameClickTimerStartTime = Date.now() - gameClickTimerSeconds * 1000;
+    gameClickTimerInterval = setInterval(tickGameClickTimer, 250);
+  }
+
   function tickGameClickTimer() {
-    gameClickTimerSeconds++;
+    const elapsed = Math.floor((Date.now() - gameClickTimerStartTime) / 1000);
+    if (elapsed <= gameClickTimerSeconds) return;   // same second, nothing to say
+    const previous = gameClickTimerSeconds;
+    gameClickTimerSeconds = elapsed;
     if (navView && navView.webContents) navView.webContents.send('game-click-timer-tick', gameClickTimerSeconds);
 
-    // FIX: Background timer owns the titlebar when running — prevents the two
+    // FIX: Background timer owns the titlebar when running - prevents the two
     // timers fighting each other and causing the titlebar to drift out of sync
     // with what the stopwatch panel shows.
     if (!backgroundTimerRunning) {
@@ -1701,12 +2109,13 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       console.log('Game-click timer reached threshold, alerting');
       triggerGameClickAlert();
     }
-    if (gameClickTimerSeconds === 90) console.log('Game-click timer reached 90s, continuing to count for negative display');
+    if (previous < 90 && gameClickTimerSeconds >= 90) console.log('Game-click timer reached 90s, continuing to count for negative display');
   }
 
   function resetGameClickTimer() {
     if (gameClickTimerRunning) {
       gameClickTimerSeconds = 0;
+      gameClickTimerStartTime = Date.now();
       gameClickAlertTriggeredInCycle = false;
       console.log('Game-click timer reset to 0');
       if (navView && navView.webContents) navView.webContents.send('game-click-timer-tick', 0);
@@ -1730,7 +2139,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     if (!backgroundTimerRunning) updateWindowTitleWithTimer(false, 0, 'afk', 90);
   }
 
-  // ── Hover ENTER / UN-IDLE — pause timers, show 1:30 frozen ───────────────
+  // ── Hover ENTER / UN-IDLE - pause timers, show 1:30 frozen ───────────────
   function pauseTimerForHover() {
     if (!afkGameClick || !afkHover) return;
     stopAlertSound();
@@ -1738,6 +2147,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     // Stop & reset both timers (do NOT restart yet)
     if (gameClickTimerInterval) { clearInterval(gameClickTimerInterval); gameClickTimerInterval = null; }
     gameClickTimerSeconds = 0;
+    gameClickTimerStartTime = Date.now();
     gameClickAlertTriggeredInCycle = false;
 
     if (backgroundTimerInterval) { clearInterval(backgroundTimerInterval); backgroundTimerInterval = null; }
@@ -1746,7 +2156,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     backgroundAlertTriggered = false;
 
     hoverPaused = true;
-    console.log('hover: cursor ENTERED/MOVED in game view — timers paused, showing 1:30');
+    console.log('hover: cursor ENTERED/MOVED in game view - timers paused, showing 1:30');
 
     // Push 0 to stopwatch panel → shows 1:30, paused
     if (navView && navView.webContents) {
@@ -1758,7 +2168,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     updateWindowTitleWithTimer(true, 0, 'afk', 90);
   }
 
-  // ── Hover IDLE — mouse stopped moving inside canvas: reset to 1:30 and START ─
+  // ── Hover IDLE - mouse stopped moving inside canvas: reset to 1:30 and START ─
   function idleInCanvas() {
     if (!afkGameClick || !afkHover) return;
     stopAlertSound();
@@ -1768,7 +2178,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     gameClickTimerSeconds = 0;
     gameClickAlertTriggeredInCycle = false;
     gameClickTimerRunning = true;
-    gameClickTimerInterval = setInterval(tickGameClickTimer, 1000);
+    armGameClickTimer();
 
     if (backgroundTimerInterval) clearInterval(backgroundTimerInterval);
     backgroundTimerSeconds = 0;
@@ -1779,7 +2189,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     }
 
     hoverPaused = false;
-    console.log('hover: cursor IDLE in game view — timers reset & started from 1:30');
+    console.log('hover: cursor IDLE in game view - timers reset & started from 1:30');
 
     if (navView && navView.webContents) {
       navView.webContents.send('background-timer-tick', { seconds: 0, mode: backgroundTimerMode, countdownTime: backgroundCountdownTime });
@@ -1790,7 +2200,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     updateWindowTitleWithTimer(true, 0, 'afk', 90);
   }
 
-  // ── Hover LEAVE — mouse left canvas: reset to 1:30 and START countdown ─────
+  // ── Hover LEAVE - mouse left canvas: reset to 1:30 and START countdown ─────
   function resumeTimerFromHover() {
     if (!afkGameClick || !afkHover) return;
     stopAlertSound();
@@ -1801,7 +2211,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     gameClickTimerSeconds = 0;
     gameClickAlertTriggeredInCycle = false;
     gameClickTimerRunning = true;
-    gameClickTimerInterval = setInterval(tickGameClickTimer, 1000);
+    armGameClickTimer();
 
     if (backgroundTimerInterval) clearInterval(backgroundTimerInterval);
     backgroundTimerSeconds = 0;
@@ -1811,7 +2221,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       backgroundTimerInterval = setInterval(tickBackgroundTimer, 1000);
     }
 
-    console.log('hover: cursor LEFT game view — timers reset & started from 1:30');
+    console.log('hover: cursor LEFT game view - timers reset & started from 1:30');
 
     if (navView && navView.webContents) {
       navView.webContents.send('background-timer-tick', { seconds: 0, mode: backgroundTimerMode, countdownTime: backgroundCountdownTime });
@@ -1931,7 +2341,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       });
     }
 
-    // Background timer owns the titlebar — 1:1 sync with stopwatch panel guaranteed
+    // Background timer owns the titlebar - 1:1 sync with stopwatch panel guaranteed
     updateWindowTitleWithTimer(backgroundTimerRunning, backgroundTimerSeconds, backgroundTimerMode, backgroundCountdownTime);
 
     if (backgroundTimerMode === 'afk') {
@@ -1947,7 +2357,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         console.log('AFK background timer reached threshold, alerting');
         triggerBackgroundAlert();
       }
-      // AFK mode: continues counting past 90 for negative display — no auto-loop
+      // AFK mode: continues counting past 90 for negative display - no auto-loop
 
     } else if (backgroundTimerMode === 'countdown') {
       const remaining = backgroundCountdownTime - backgroundTimerSeconds;
@@ -2044,6 +2454,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   ipcMain.on('reset-game-click-timer', () => {
     if (gameClickTimerRunning) {
       gameClickTimerSeconds = 0;
+      gameClickTimerStartTime = Date.now();
       gameClickAlertTriggeredInCycle = false;
       console.log('Game-click timer manually reset to 0');
       if (navView && navView.webContents) navView.webContents.send('game-click-timer-tick', 0);
@@ -2063,7 +2474,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   ipcMain.on('resume-game-click-timer', () => {
     if (afkGameClick && !gameClickTimerInterval) {
       gameClickTimerRunning = true;
-      gameClickTimerInterval = setInterval(tickGameClickTimer, 1000);
+      armGameClickTimer();
       console.log('Game-click timer resumed');
       if (!backgroundTimerRunning) updateWindowTitleWithTimer(true, gameClickTimerSeconds, 'afk', 90);
     }
@@ -2198,14 +2609,14 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   });
 
   // ── Game-view input IPC ─────────────────────────────────────────────────────
-  // mouse click — always resets when afkGameClick is enabled
+  // mouse click - always resets when afkGameClick is enabled
   ipcMain.on('game-view-mouse-clicked', () => {
     if (!afkGameClick) return;
     resetGameClickTimer();
     if (navView && navView.webContents) navView.webContents.send('afk-game-click-reset');
   });
 
-  // key press — only resets when input type is 'both'
+  // key press - only resets when input type is 'both'
   ipcMain.on('game-view-key-pressed', () => {
     if (!afkGameClick || afkInputType !== 'both') return;
     resetGameClickTimer();
@@ -2216,6 +2627,9 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   ipcMain.on('zoom-wheel', (event, data) => {
     try {
       const senderWC = event.sender;
+      // External windows persist zoom per URL in their own handler; letting
+      // this one run too would apply every wheel tick twice.
+      if (senderWC._lkExternalPage) return;
       const pv = primaryViews.find(p => p.view && p.view.webContents && p.view.webContents.id === senderWC.id);
       const targetWC = pv ? pv.view.webContents : senderWC;
       if (!data || typeof data.deltaY !== 'number') return;
@@ -2239,8 +2653,276 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   // ── Tabs ────────────────────────────────────────────────────────────────────
   let tabIdCounter = 0;
 
+  // ── Tab navigation ────────────────────────────────────────────────────────
+  // Toolbar buttons, thumb buttons and keys all land here, and the game view is
+  // refused. This is the check that holds even if a renderer misbehaves.
+  function navHistory(wc) {
+    return wc.navigationHistory || {
+      canGoBack: () => wc.canGoBack(), canGoForward: () => wc.canGoForward(),
+      goBack: () => wc.goBack(), goForward: () => wc.goForward()
+    };
+  }
+
+  // The keys a browser would treat as navigation. Read in one place so tabs and
+  // torn-off windows agree, and so the game view's blocklist has a counterpart.
+  function navKeyAction(input) {
+    if (!input || input.type !== 'keyDown') return null;
+    const ctrl = input.control || input.meta;
+    if (input.key === 'F5' || (ctrl && (input.key === 'r' || input.key === 'R'))) return 'reload';
+    if (input.alt && input.key === 'ArrowLeft') return 'back';
+    if (input.alt && input.key === 'ArrowRight') return 'forward';
+    if (input.key === 'BrowserBack') return 'back';
+    if (input.key === 'BrowserForward') return 'forward';
+    if (input.key === 'BrowserRefresh') return 'reload';
+    return null;
+  }
+
+  function navigateTab(id, action) {
+    if (id === 'main') return;                       // the game view. never.
+    const pv = primaryViews.find(p => p.id === id);
+    if (!pv || !pv.view.webContents || pv.view.webContents.isDestroyed()) return;
+    navigateWebContents(pv.view.webContents, action);
+  }
+
+  // ── Toolbars ──────────────────────────────────────────────────────────────
+  // Tabs and torn-off windows share one toolbar implementation. The target page
+  // comes from which toolbar sent the message, never from the message itself.
+  // The game view is never wired to one.
+  function navigateWebContents(wc, action) {
+    if (!wc || wc.isDestroyed()) return;
+    const hist = navHistory(wc);
+    if (action === 'back' && hist.canGoBack()) hist.goBack();
+    else if (action === 'forward' && hist.canGoForward()) hist.goForward();
+    else if (action === 'reload') wc.reload();
+  }
+
+  // ── Find in page ──────────────────────────────────────────────────────────
+  // The box lives in the toolbar, so only views with one can be searched. The
+  // key is read per view, not registered globally, so Ctrl+F while playing
+  // reaches the game untouched.
+  function isFindKey(input) {
+    if (!input || input.type !== 'keyDown') return false;
+    const ctrl = input.control || input.meta;
+    return (ctrl && (input.key === 'f' || input.key === 'F')) || input.key === 'F3';
+  }
+
+  function openFindBar(toolbarView) {
+    if (!toolbarView || toolbarView.webContents.isDestroyed()) return;
+    toolbarView.webContents.send('find-open');
+    toolbarView.webContents.focus();     // so the box can be typed into at once
+  }
+
+  // Reports matches back to the toolbar that asked, and closes the box when the
+  // page changes underneath it.
+  function wireFind(pageView, toolbarView) {
+    pageView.webContents.on('found-in-page', (event, result) => {
+      if (toolbarView.webContents.isDestroyed()) return;
+      toolbarView.webContents.send('find-result', {
+        matches: result.matches,
+        active: result.activeMatchOrdinal
+      });
+    });
+    pageView.webContents.on('did-navigate', () => {
+      if (!toolbarView.webContents.isDestroyed()) toolbarView.webContents.send('find-reset');
+    });
+  }
+
+  // Electron's `findNext` means "continues the running session", not "next
+  // match":
+  //   newly typed query  -> findNext:true   (start a session)
+  //   step through hits  -> findNext:false  (continue it)
+  // Inverted, typing finds nothing until Enter. The wire field is `advance`.
+  ipcMain.on('find-query', (event, opts) => {
+    const getPageWC = toolbarTargets.get(event.sender.id);
+    const wc = getPageWC && getPageWC();
+    if (!wc || wc.isDestroyed() || !opts || !opts.text) return;
+    wc.findInPage(String(opts.text), {
+      findNext: !opts.advance,          // a fresh query opens a new session
+      forward: opts.forward !== false
+    });
+  });
+
+  ipcMain.on('find-stop', (event) => {
+    const getPageWC = toolbarTargets.get(event.sender.id);
+    const wc = getPageWC && getPageWC();
+    if (wc && !wc.isDestroyed()) wc.stopFindInPage('clearSelection');
+  });
+
+  ipcMain.on('find-close', (event) => {
+    const getPageWC = toolbarTargets.get(event.sender.id);
+    const wc = getPageWC && getPageWC();
+    if (!wc || wc.isDestroyed()) return;
+    wc.stopFindInPage('clearSelection');
+    wc.focus();                          // hand the keyboard back to the page
+  });
+
+  function createToolbarView() {
+    const view = new WebContentsView({ webPreferences: { nodeIntegration: true, contextIsolation: false } });
+    view.webContents.loadFile(path.join(__dirname, 'navitems/window-toolbar.html'));
+    return view;
+  }
+
+  // getPageWC is a lookup, not a reference, so the wiring survives the page view
+  // being replaced. Returns the repaint function for the caller to hook up.
+  function wireToolbar(toolbarView, getPageWC, fallbackTitle, getExtra) {
+    toolbarTargets.set(toolbarView.webContents.id, getPageWC);
+    const push = () => {
+      if (toolbarView.webContents.isDestroyed()) return;
+      const wc = getPageWC();
+      if (!wc || wc.isDestroyed()) return;
+      const hist = navHistory(wc);
+      toolbarView.webContents.send('window-nav-state', Object.assign({
+        title: wc.getTitle() || fallbackTitle || '',
+        canGoBack: hist.canGoBack(),
+        canGoForward: hist.canGoForward(),
+        loading: wc.isLoading()
+      }, getExtra ? getExtra() : null));
+    };
+    toolbarView.webContents.on('did-finish-load', () => {
+      applyFontToView(toolbarView.webContents, true);
+      push();
+    });
+    return push;
+  }
+
+  function releaseToolbar(toolbarView) {
+    if (!toolbarView) return;
+    try { toolbarTargets.delete(toolbarView.webContents.id); } catch (e) {}
+  }
+
+  // ── Split view ──
+  // Press once to put another tab beside this one, again to close it. Every
+  // refusal is reported to the toolbar rather than failing silently.
+  function toolTabsBesides(excludeId) {
+    return tabs.filter(t => t.id !== 'main' && t.id !== excludeId &&
+                            primaryViews.some(p => p.id === t.id));
+  }
+
+  function toolbarSay(message) {
+    const pv = primaryViews.find(p => p.id === currentTab);
+    if (pv && pv.toolbar && !pv.toolbar.webContents.isDestroyed())
+      pv.toolbar.webContents.send('toolbar-message', message);
+  }
+
+  // Widens the window enough for two panes, recording by how much so it can be
+  // handed back when the split ends. False if the display is too small.
+  function makeRoomForSplit() {
+    const [contentWidth] = mainWindow.getContentSize();
+    const navWidth = navPanelMode === 'collapsed' ? 0
+      : (navPanelMode === 'strip' ? NAV_PANEL_STRIP_WIDTH : NAV_PANEL_WIDTH);
+    const needed = SPLIT_MIN_PANE * 2 + SPLIT_DIVIDER;
+    const deficit = needed - (contentWidth - navWidth);
+    if (deficit <= 0) return true;
+
+    const bounds = mainWindow.getBounds();
+    const { screen } = require('electron');
+    const wa = screen.getDisplayMatching(bounds).workArea;
+    const newWidth = bounds.width + deficit;
+    if (newWidth > wa.width) return false;
+
+    let newX = bounds.x;
+    if (newX + newWidth > wa.x + wa.width) newX = Math.max(wa.x, wa.x + wa.width - newWidth);
+    try { mainWindow.setBounds({ x: newX, y: bounds.y, width: newWidth, height: bounds.height }); }
+    catch (e) { return false; }
+    splitGrewWindowBy = deficit;
+    return true;
+  }
+
+  function giveBackSplitWidth() {
+    if (!splitGrewWindowBy) return;
+    const b = mainWindow.getBounds();
+    try { mainWindow.setBounds({ x: b.x, y: b.y, width: Math.max(800, b.width - splitGrewWindowBy), height: b.height }); }
+    catch (e) {}
+    splitGrewWindowBy = 0;
+  }
+
+  function endSplit() {
+    splitTabId = null;
+    splitOtherId = null;
+    splitLocked = false;
+    splitLockedPair = null;
+    giveBackSplitWidth();
+    updateBounds();
+    broadcastToolbarStates();
+    persistTabs();
+    log.info('Split view: off');
+  }
+
+  function startSplitWith(partnerId) {
+    if (!makeRoomForSplit()) {
+      toolbarSay('Not enough screen width for two panes');
+      return;
+    }
+    splitTabId = partnerId;
+    splitOtherId = currentTab;      // the tab the split was started from
+    updateBounds();
+    broadcastToolbarStates();
+    persistTabs();
+    log.info('Split view: ' + currentTab + ' beside ' + partnerId);
+  }
+
+  ipcMain.on('toggle-split', () => {
+    if (appSettings.splitViewEnabled === false) return;
+    if (splitTabId) { endSplit(); return; }
+    if (currentTab === 'main') { toolbarSay('The game tab is never split'); return; }
+
+    // The game can be a partner. It takes the left pane and stays there while
+    // you move between tools. Its own tab still has no toolbar.
+    const gameTab = tabs.find(t => t.id === 'main');
+    const candidates = toolTabsBesides(currentTab);
+    if (gameTab) candidates.unshift({ id: 'main', title: 'Game' });
+
+    if (!candidates.length) { toolbarSay('Open another tool tab to split with'); return; }
+    if (candidates.length === 1) { startSplitWith(candidates[0].id); return; }
+
+    Menu.buildFromTemplate(
+      candidates.map(t => ({ label: t.title || t.url, click: () => startSplitWith(t.id) }))
+    ).popup({ window: mainWindow });
+  });
+
+  // ── Split view ──
+  // Seam drag. splitPanes() clamps the ratio so a pane cannot collapse.
+  // ── Split view ──
+  // Freezes the pair on screen. Locked, a third tab opens on its own and the
+  // pair waits. The split button still closes it.
+  ipcMain.on('toggle-split-lock', () => {
+    if (!splitTabId) return;
+    if (splitLocked) {
+      splitLocked = false;
+      splitLockedPair = null;
+      log.info('Split view: unlocked');
+    } else {
+      const pair = splitPairIds();
+      if (!pair) { toolbarSay('Nothing to lock while the split is not showing'); return; }
+      splitLockedPair = { leftId: pair.leftId, rightId: pair.rightId };
+      splitLocked = true;
+      log.info('Split view: locked ' + pair.leftId + ' | ' + pair.rightId);
+    }
+    updateBounds();
+    broadcastToolbarStates();
+    persistTabs();
+  });
+
+  ipcMain.on('set-split-ratio', (event, ratio) => {
+    if (typeof ratio !== 'number' || !isFinite(ratio)) return;
+    appSettings.splitRatio = Math.min(0.9, Math.max(0.1, ratio));
+    updateBounds();
+  });
+
+  ipcMain.on('commit-split-ratio', () => saveSettingsDebounced());
+
+  function broadcastToolbarStates() {
+    primaryViews.forEach(pv => { if (pv.pushToolbar) pv.pushToolbar(); });
+  }
+
+  ipcMain.on('window-nav', (event, action) => {
+    const getPageWC = toolbarTargets.get(event.sender.id);
+    if (!getPageWC) return;
+    navigateWebContents(getPageWC(), action);
+  });
+
   // Creates a tab and its view. Returns the new (or existing) tab id.
-  // opts.activate — false leaves the current tab in front, used when restoring
+  // opts.activate - false leaves the current tab in front, used when restoring
   // a saved set of tabs where only one of them should end up active.
   function createTab(url, customTitle, iconPath, opts) {
     const { activate = true } = opts || {};
@@ -2261,9 +2943,41 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     const newView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') } });
     newView.webContents.loadURL(url);
     newView.webContents.on('did-finish-load', () => scheduleWindowManagerReflow());
+    // Mini-browser keys for this tab. The game view gets the exact opposite
+    // treatment: there these same keys are swallowed and nothing happens.
+    newView.webContents.on('before-input-event', (event, input) => {
+      if (isFindKey(input)) { event.preventDefault(); openFindBar(toolbarView); return; }
+      const action = navKeyAction(input);
+      if (!action) return;
+      event.preventDefault();
+      navigateTab(id, action);
+    });
     newView.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
     mainWindow.contentView.addChildView(newView);
-    primaryViews.push({ id, view: newView });
+
+    // Its own toolbar above the page, the same one a torn-off window gets. The
+    // game view is the one primary view built without one.
+    const toolbarView = createToolbarView();
+    mainWindow.contentView.addChildView(toolbarView);
+    const pushToolbarState = wireToolbar(
+      toolbarView,
+      () => {
+        const pv = primaryViews.find(p => p.id === id);
+        return pv && pv.view.webContents && !pv.view.webContents.isDestroyed() ? pv.view.webContents : null;
+      },
+      title,
+      // ── Split view ── the button is simply on or off.
+      () => ({
+        canPin: appSettings.splitViewEnabled !== false,
+        pinned: !!splitTabId,
+        locked: splitLocked
+      })
+    );
+    ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'page-title-updated']
+      .forEach(ev => newView.webContents.on(ev, pushToolbarState));
+    wireFind(newView, toolbarView);
+
+    primaryViews.push({ id, view: newView, toolbar: toolbarView, pushToolbar: pushToolbarState });
     if (appSettings.tabZoom && appSettings.tabZoom[url]) newView.webContents.once('did-finish-load', () => { try { newView.webContents.setZoomFactor(appSettings.tabZoom[url]); } catch (e) {} });
     mainWindow.webContents.send('add-tab', id, title, icon);
     if (!customTitle) newView.webContents.on('page-title-updated', (event, pageTitle) => {
@@ -2273,7 +2987,8 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       persistTabs();
     });
     // A freshly added child view sits on top, so hide it unless it's taking focus.
-    if (activate) switchToTab(id); else newView.setVisible(false);
+    if (activate) switchToTab(id);
+    else { newView.setVisible(false); toolbarView.setVisible(false); }
     updateBounds();
     persistTabs();
     return id;
@@ -2286,6 +3001,23 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     appSettings.openTabs = open.map(t => ({ url: t.url, title: t.title, icon: t.icon || null }));
     const idx = open.findIndex(t => t.id === currentTab);
     appSettings.activeTab = idx === -1 ? 'main' : idx;
+
+    // Record the pair for next launch. Tab ids are fresh each run, so store an
+    // index into openTabs (or 'main'), as activeTab does.
+    const ref = id => {
+      if (!id) return null;
+      if (id === 'main') return 'main';
+      const at = open.findIndex(t => t.id === id);
+      return at === -1 ? null : at;
+    };
+    appSettings.splitView = splitTabId ? {
+      partner:     ref(splitTabId),
+      other:       ref(splitOtherId),
+      locked:      splitLocked,
+      lockedLeft:  splitLocked && splitLockedPair ? ref(splitLockedPair.leftId) : null,
+      lockedRight: splitLocked && splitLockedPair ? ref(splitLockedPair.rightId) : null
+    } : null;
+
     saveSettingsDebounced();
   }
 
@@ -2297,6 +3029,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     // Read the active tab up front: creating each tab calls persistTabs(),
     // which rewrites appSettings.activeTab from the still-unchanged current tab.
     const savedActive = appSettings.activeTab;
+    const savedSplit = appSettings.splitView;   // same reason: createTab rewrites it
     const restoredIds = [];
     saved.forEach(t => {
       if (!t || !t.url) return;
@@ -2305,6 +3038,39 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     const activeId = (typeof savedActive === 'number' && restoredIds[savedActive]) ? restoredIds[savedActive] : 'main';
     switchToTab(activeId);
     if (restoredIds.length) log.info(`Restored ${restoredIds.length} tab(s), active: ${activeId}`);
+    restoreSplitView(savedSplit, restoredIds);
+  }
+
+  // Puts back last session's pair. Every saved reference must resolve to a tab
+  // that came back; otherwise no split, rather than a half-formed one.
+  function restoreSplitView(saved, restoredIds) {
+    if (!saved || appSettings.splitViewEnabled === false) return;
+    const idFor = ref => {
+      if (ref === 'main') return 'main';
+      if (typeof ref !== 'number') return null;
+      return restoredIds[ref] || null;
+    };
+
+    const partner = idFor(saved.partner);
+    if (!partner) return;
+    splitTabId = partner;
+    splitOtherId = idFor(saved.other);
+
+    if (saved.locked) {
+      const left = idFor(saved.lockedLeft);
+      const right = idFor(saved.lockedRight);
+      if (left && right) {
+        splitLocked = true;
+        splitLockedPair = { leftId: left, rightId: right };
+      }
+    }
+
+    // The borrowed width was given back on close, so take it again or the
+    // restored split will not fit.
+    if (splitPairIds()) makeRoomForSplit();
+    updateBounds();
+    broadcastToolbarStates();
+    log.info('Restored split view: ' + splitTabId + (splitLocked ? ' (locked)' : ''));
   }
 
   ipcMain.on('add-tab', (event, url, customTitle, iconPath) => { createTab(url, customTitle, iconPath); });
@@ -2320,7 +3086,26 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     if (index !== -1) {
       if (tabByUrl.get(removedTab.url) === id) tabByUrl.delete(removedTab.url);
       mainWindow.contentView.removeChildView(primaryViews[index].view);
+      const removedToolbar = primaryViews[index].toolbar;
+      if (removedToolbar) {
+        releaseToolbar(removedToolbar);
+        mainWindow.contentView.removeChildView(removedToolbar);
+        try { removedToolbar.webContents.close(); } catch (e) {}
+      }
       primaryViews.splice(index, 1);
+      // ── Split view ── that pane's tab is gone, so the split goes with it.
+      const wasPaired = splitTabId === id ||
+        (splitLockedPair && (splitLockedPair.leftId === id || splitLockedPair.rightId === id));
+      const wasFollowing = splitOtherId === id;
+      if (wasPaired) {
+        splitTabId = null;
+        splitOtherId = null;
+        splitLocked = false;
+        splitLockedPair = null;
+        giveBackSplitWidth();
+      } else if (wasFollowing) {
+        splitOtherId = null;   // that side is empty; the next tab you open fills it
+      }
     }
     mainWindow.webContents.send('close-tab', id);
     updateBounds();
@@ -2331,9 +3116,13 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
 
   function switchToTab(id) {
     currentTab = id;
-    primaryViews.forEach(({ view }) => view.setVisible(false));
-    const cv = primaryViews.find(pv => pv.id === id);
-    if (cv) cv.view.setVisible(true);
+    // ── Split view ── moving to any tab other than the pinned one puts that tab
+    // in the following pane, and remembers it for when you click the pinned tab.
+    if (splitTabId && id !== splitTabId && id !== 'main') splitOtherId = id;
+    // updateBounds() decides what is visible: this tab, and the pinned one too
+    // when a split is on and there is room for it.
+    updateBounds();
+    broadcastToolbarStates();
     mainWindow.webContents.send('update-active', id);
     scheduleWindowManagerReflow();
     persistTabs();
@@ -2609,7 +3398,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   // rate limited (429), which is reported back plainly rather than as a crash.
   // ── Hiscores ──────────────────────────────────────────────────────────────
   // One route for every hiscores lookup, single or compare. The API rate limits
-  // hard, and a comparison is two lookups back to back — the surest way to trip
+  // hard, and a comparison is two lookups back to back - the surest way to trip
   // it. Three cheap measures keep that from happening:
   //   · a short cache, so looking the same player up twice costs one request
   //   · a minimum gap between requests, so two in a row are not simultaneous
@@ -2699,7 +3488,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   ipcMain.handle('get-market-default-deviation', () =>
     Number.isFinite(appSettings.marketDefaultDeviation) ? appSettings.marketDefaultDeviation : 20);
 
-  // Same panel, its own window — so it can be browsed while the nav column is
+  // Same panel, its own window - so it can be browsed while the nav column is
   // doing something else. Both copies stay live off the same broadcast.
   ipcMain.on('open-watchlist-window', () => {
     if (watchlistWindow && !watchlistWindow.isDestroyed()) { watchlistWindow.focus(); return; }
@@ -2757,7 +3546,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     return appSettings.marketWatches;
   });
 
-  // Edit a watch in place — changing the price you care about should not mean
+  // Edit a watch in place - changing the price you care about should not mean
   // deleting and re-adding it.
   ipcMain.handle('update-market-watch', async (event, id, patch) => {
     const w = (appSettings.marketWatches || []).find(x => x.id === id);
@@ -2778,14 +3567,14 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     return appSettings.marketWatches;
   });
 
-  // Completed trades for an item, oldest first — the basis of the price graph.
+  // Completed trades for an item, oldest first - the basis of the price graph.
   //
   // Real trades are often not a clean pile of coins: high value items go for
   // "340m + a santa hat + a d chain". Dropping those left barter-heavy items
   // looking like they had never traded, so each sale is classified instead:
-  //   coins — a single coins offer, an exact price
-  //   mixed — coins plus other items, so the coin part is only a FLOOR
-  //   items — no coins at all, no gp value can be claimed
+  //   coins - a single coins offer, an exact price
+  //   mixed - coins plus other items, so the coin part is only a FLOOR
+  //   items - no coins at all, no gp value can be claimed
   function classifySoldTrade(l) {
     const offer = l.offers && l.offers[0];
     const empty = { kind: 'none', price: null, extras: 0, text: 'no offer' };
@@ -2859,8 +3648,8 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         .map(s => s.price));
 
       // An item page defaults to the buy side. Rare things often have nobody
-      // bidding but somebody asking — a Gilded kiteshield had 0 buy listings
-      // and one sell listing at 30m — so check the other side before giving up.
+      // bidding but somebody asking - a Gilded kiteshield had 0 buy listings
+      // and one sell listing at 30m - so check the other side before giving up.
       if (!data.sales.length && data.current == null) {
         const sellPage = await marketFetchPage(`/items/${encodeURIComponent(slug)}?type=sell`);
         const asks = ((sellPage.props && sellPage.props.listings && sellPage.props.listings.data) || [])
@@ -2887,13 +3676,13 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
         return { unit: Math.round(near.reduce((s, x) => s + x.price, 0) / near.length),
                  source: `avg of ${near.length} sale${near.length > 1 ? 's' : ''} near that date` };
       }
-      // Nothing close in time — use the sales nearest to it instead of a blind average.
+      // Nothing close in time - use the sales nearest to it instead of a blind average.
       const sorted = [...data.sales].sort((a, b) => Math.abs(a.t - atTime) - Math.abs(b.t - atTime)).slice(0, 5);
       return { unit: Math.round(sorted.reduce((s, x) => s + x.price, 0) / sorted.length),
                source: `avg of ${sorted.length} nearest sale${sorted.length > 1 ? 's' : ''}` };
     }
     if (data.current) return { unit: data.current, source: 'current market price' };
-    // A zero shop value is not a valuation — treating it as one lets an item
+    // A zero shop value is not a valuation - treating it as one lets an item
     // contribute nothing to a total and quietly drags the trade toward 0.
     if (data.cost) return { unit: data.cost, source: 'shop value only' };
     return { unit: null, source: 'no data' };
@@ -2902,7 +3691,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
   // What a standing offer paid in items is worth in gp, valued at today's
   // prices. A santa hat wanted for "1 Halloween mask + 1 Halloween mask + 1
   // Santa hat" is a real offer with a real value, and dropping it because no
-  // coins changed hands threw away half the book on the rare items — exactly
+  // coins changed hands threw away half the book on the rare items - exactly
   // the ones where a price check matters most.
   async function valueOfferNow(classified) {
     if (!classified || !classified.parts || !classified.parts.length) return null;
@@ -2950,7 +3739,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       const raw = total / (req.perEach ? 1 : lot);
 
       // Only a complete valuation is safe to plot. If any item could not be
-      // priced the remainder is not a "low estimate" — it is a number missing
+      // priced the remainder is not a "low estimate" - it is a number missing
       // its largest term. "105k raw sharks for an easter egg" with the sharks
       // unpriced comes out as 0, which is not a cheap trade, it is no answer.
       out[req.id] = complete && total > 0
@@ -2960,7 +3749,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     return out;
   });
 
-  // `days` asks for enough pages to actually cover that window — without it a
+  // `days` asks for enough pages to actually cover that window - without it a
   // busy item returns ten pages of one week and a "3 months" view has nothing
   // older to show.
   ipcMain.handle('market-price-history', async (event, slug, opts) => {
@@ -2996,7 +3785,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       const trades = classified
         .map(({ l, c }) => {
           // Only pure coin sales are screened. In a mixed offer the coin figure
-          // is openly a floor with items stacked on top — "4m + a ranger set" is
+          // is openly a floor with items stacked on top - "4m + a ranger set" is
           // meant to look small next to the going rate, and calling that a
           // placeholder would flag half the high-value trades on the site.
           const screened = c.kind === 'coins' && c.price != null
@@ -3008,7 +3797,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
                    // the chart while still listing them below it.
                    price: suspect ? null : screened.price,
                    // What was actually written down, kept whenever it is not
-                   // what we ended up using — including suspects, where the
+                   // what we ended up using - including suspects, where the
                    // listed number is the whole point of the explanation.
                    listedPrice: suspect || screened.price !== c.price ? c.price : null,
                    suspect,
@@ -3039,7 +3828,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     };
 
     // Valuing item offers costs a page load per distinct item, so a busy book
-    // is capped — the point is to stop throwing the offers away, not to price
+    // is capped - the point is to stop throwing the offers away, not to price
     // every last one.
     const MAX_VALUED = 12;
 
@@ -3089,8 +3878,8 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     try {
       const [sellRows, buyRows] = await Promise.all([fetchSide('sell'), fetchSide('buy')]);
       // Both sides judged against one reference drawn from both. A side often
-      // holds a single listing — the santa hat buy side held exactly one, for
-      // "169 Coins" — and a lone listing has nothing of its own to be measured
+      // holds a single listing - the santa hat buy side held exactly one, for
+      // "169 Coins" - and a lone listing has nothing of its own to be measured
       // against. The other side of the book does.
       const reference = referencePrice([...sellRows, ...buyRows].map(listingUnitPrice));
       return {
@@ -3160,6 +3949,172 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     createTab(`${MARKET_ORIGIN}/items/${slug}`, 'Markets', 'assets/market.png');
   });
 
+
+  // ── Custom tools ──────────────────────────────────────────────────────────
+  // Nav panel and settings both read the list from here, so they cannot differ.
+  ipcMain.handle('get-custom-tools', () => customToolsForRenderer());
+
+  // Adds a tool and grabs the site's own icon, the one its browser tab shows.
+  // Returns { ok, tool } or { ok: false, error } for the add dialog to render.
+  ipcMain.handle('add-custom-tool', async (event, input) => {
+    const url = normalizeToolUrl(input && input.url);
+    if (!url) return { ok: false, error: 'That does not look like a web address.' };
+
+    const tools = getCustomTools();
+    if (tools.some(t => t.url === url)) return { ok: false, error: 'That tool is already in your list.' };
+    if (tools.length >= 30) return { ok: false, error: 'You have reached the limit of 30 custom tools.' };
+
+    const id = 'tool-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+    let title = String((input && input.title) || '').trim();
+
+    const meta = await fetchSiteMeta(url);
+    if (!title) title = (meta.title || '').trim();
+    if (!title) { try { title = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { title = url; } }
+    title = title.slice(0, 40);
+
+    const icon = await captureToolIcon(url, id, meta.iconUrl);
+
+    tools.push({ id, url, title, icon });
+    saveSettings();
+    broadcastCustomTools();
+    log.info('Added custom tool:', title, url, icon ? '(icon captured)' : '(no icon)');
+    return { ok: true, tool: customToolsForRenderer().find(t => t.id === id) };
+  });
+
+  // Rename, or repoint at a different address (which re-grabs the icon).
+  ipcMain.handle('update-custom-tool', async (event, id, patch) => {
+    const tool = getCustomTools().find(t => t.id === id);
+    if (!tool) return { ok: false, error: 'That tool no longer exists.' };
+
+    if (patch && typeof patch.title === 'string') {
+      const title = patch.title.trim().slice(0, 40);
+      if (title) tool.title = title;
+    }
+    if (patch && typeof patch.url === 'string' && patch.url.trim()) {
+      const url = normalizeToolUrl(patch.url);
+      if (!url) return { ok: false, error: 'That does not look like a web address.' };
+      if (url !== tool.url) {
+        tool.url = url;
+        const meta = await fetchSiteMeta(url);
+        tool.icon = await captureToolIcon(url, tool.id, meta.iconUrl);
+      }
+    }
+    saveSettings();
+    broadcastCustomTools();
+    return { ok: true, tool: customToolsForRenderer().find(t => t.id === id) };
+  });
+
+  // For when a site changes its icon, or the grab came up empty first time.
+  ipcMain.handle('refresh-custom-tool-icon', async (event, id) => {
+    const tool = getCustomTools().find(t => t.id === id);
+    if (!tool) return { ok: false, error: 'That tool no longer exists.' };
+    const meta = await fetchSiteMeta(tool.url);
+    tool.icon = await captureToolIcon(tool.url, tool.id, meta.iconUrl);
+    saveSettings();
+    broadcastCustomTools();
+    return { ok: !!tool.icon, tool: customToolsForRenderer().find(t => t.id === id) };
+  });
+
+  // Removing is meant to be as easy as adding: the entry and its icon file go,
+  // nothing else in the app is touched.
+  ipcMain.handle('remove-custom-tool', (event, id) => {
+    const tools = getCustomTools();
+    const idx = tools.findIndex(t => t.id === id);
+    if (idx === -1) return { ok: false };
+    const [removed] = tools.splice(idx, 1);
+    removeToolIconFiles(removed.id);
+    forgetHiddenNavButton(removed.id);
+    saveSettings();
+    broadcastCustomTools();
+    log.info('Removed custom tool:', removed.title);
+    return { ok: true };
+  });
+
+  // ── Add-tool dialog ───────────────────────────────────────────────────────
+  ipcMain.on('open-add-tool-window', (event, presetId) => {
+    if (addToolWindow && !addToolWindow.isDestroyed()) {
+      addToolWindow.focus();
+      addToolWindow.webContents.send('edit-tool', presetId || null);
+      return;
+    }
+    addToolWindow = new BrowserWindow({
+      width: 460, height: 430, resizable: false, autoHideMenuBar: true,
+      parent: mainWindow, title: 'LostKit - Add Tool',
+      webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    addToolWindow.loadFile(path.join(__dirname, 'navitems/add-tool.html'));
+    applyAlwaysOnTop(addToolWindow);
+    addToolWindow.webContents.on('did-finish-load', () => {
+      applyFontToView(addToolWindow.webContents, true);
+      if (presetId) addToolWindow.webContents.send('edit-tool', presetId);
+    });
+    addToolWindow.on('closed', () => { addToolWindow = null; });
+  });
+
+  ipcMain.on('close-add-tool-window', () => {
+    if (addToolWindow && !addToolWindow.isDestroyed()) addToolWindow.close();
+  });
+
+  // Right-clicking a custom tool in the nav panel manages it in place - no trip
+  // through settings to rename one or take it back off the list.
+  ipcMain.on('custom-tool-menu', (event, id) => {
+    const tool = getCustomTools().find(t => t.id === id);
+    if (!tool) return;
+    const rendered = customToolsForRenderer().find(t => t.id === id);
+
+    Menu.buildFromTemplate([
+      { label: tool.title, enabled: false },
+      { type: 'separator' },
+      { label: 'Open in tab', click: () => createTab(tool.url, tool.title, rendered.icon) },
+      { label: 'Open in window', click: () => openExternalWindow(tool.url, tool.title, rendered.icon) },
+      { type: 'separator' },
+      { label: 'Edit…', click: () => ipcMain.emit('open-add-tool-window', null, id) },
+      {
+        label: 'Refresh icon',
+        click: async () => {
+          const meta = await fetchSiteMeta(tool.url);
+          tool.icon = await captureToolIcon(tool.url, tool.id, meta.iconUrl);
+          saveSettings();
+          broadcastCustomTools();
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Remove',
+        click: () => {
+          const choice = dialog.showMessageBoxSync(mainWindow, {
+            type: 'question', buttons: ['Remove', 'Cancel'], defaultId: 1, cancelId: 1,
+            title: 'Remove tool',
+            message: `Remove "${tool.title}" from your tools?`,
+            detail: 'You can add it again at any time.'
+          });
+          if (choice !== 0) return;
+          const tools = getCustomTools();
+          const idx = tools.findIndex(t => t.id === id);
+          if (idx === -1) return;
+          removeToolIconFiles(id);
+          forgetHiddenNavButton(id);
+          tools.splice(idx, 1);
+          saveSettings();
+          broadcastCustomTools();
+          log.info('Removed custom tool:', tool.title);
+        }
+      }
+    ]).popup({ window: mainWindow });
+  });
+
+  // ── Split view ──
+  // Master switch. Off clears any pair and hides the button in every toolbar.
+  ipcMain.handle('get-split-view-enabled', () => appSettings.splitViewEnabled !== false);
+  ipcMain.on('set-split-view-enabled', (event, enabled) => {
+    appSettings.splitViewEnabled = !!enabled;
+    if (!enabled) { splitTabId = null; splitOtherId = null; splitLocked = false; splitLockedPair = null; giveBackSplitWidth(); }
+    saveSettingsDebounced();
+    updateBounds();
+    broadcastToolbarStates();
+    persistTabs();
+  });
+
   // ── Nav button visibility ─────────────────────────────────────────────────
   ipcMain.handle('get-hidden-nav-buttons', () => appSettings.hiddenNavButtons || []);
   ipcMain.on('set-hidden-nav-buttons', (event, hiddenIds) => {
@@ -3169,28 +4124,37 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
       navView.webContents.send('update-nav-visibility', hiddenIds);
   });
 
+  // Always targets the game view. Acting on the active tab meant a world could
+  // load into a tool, which the split view made easy to hit.
   ipcMain.on('select-world', (event, url, title) => {
-    const currentTabData = tabs.find(t => t.id === currentTab);
-    if (currentTabData.url === url) return;
+    const gameTab = tabs.find(t => t.id === 'main');
+    if (!gameTab || gameTab.url === url) return;
     const choice = dialog.showMessageBoxSync(mainWindow, {
       type: 'warning', buttons: ['Cancel', 'Continue'], defaultId: 1,
       title: 'Switch World', message: 'Make sure you are logged out before switching worlds!'
     });
-    if (choice === 1) {
-      tabByUrl.delete(currentTabData.url);
-      currentTabData.url = url; currentTabData.title = title; tabByUrl.set(url, currentTab);
-      const cv = primaryViews.find(pv => pv.id === currentTab);
-      if (cv) {
-        cv.view.webContents.loadURL(url);
-        // Clear navigation history so back/forward buttons/gestures lead nowhere
-        const wc = cv.view.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory();
-      }
-      if (currentTab === 'main') { appSettings.lastWorld = { url, title }; saveSettingsDebounced(); }
-      mainWindow.webContents.send('update-tab-title', currentTab, title);
-      persistTabs();
-      ipcMain.emit('switch-nav-view', null, 'nav');
-      refreshLatency();
+    if (choice !== 1) return;
+
+    tabByUrl.delete(gameTab.url);
+    gameTab.url = url; gameTab.title = title; tabByUrl.set(url, 'main');
+    const cv = primaryViews.find(pv => pv.id === 'main');
+    if (cv) {
+      cv.view.webContents.loadURL(url);
+      // Clear navigation history so back/forward buttons/gestures lead nowhere
+      const wc = cv.view.webContents; if (wc.navigationHistory?.clear) wc.navigationHistory.clear(); else wc.clearHistory();
     }
+    appSettings.lastWorld = { url, title }; saveSettingsDebounced();
+    mainWindow.webContents.send('update-tab-title', 'main', title);
+    persistTabs();
+    ipcMain.emit('switch-nav-view', null, 'nav');
+    refreshLatency();
+
+    // Bring the game forward if it is not already on screen - otherwise you
+    // would have just switched a world you cannot see.
+    const pair = splitPairIds();
+    const gameShowing = currentTab === 'main' ||
+      (pair && (pair.leftId === 'main' || pair.rightId === 'main'));
+    if (!gameShowing) switchToTab('main');
   });
 
   mainWindow.on('close', () => {
@@ -3242,20 +4206,71 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     const win = new BrowserWindow({
       width, height,
       x: x != null ? x : undefined, y: y != null ? y : undefined,
-      title: title || url, webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') }
+      title: title || url, backgroundColor: '#141414'
     });
-    win.loadURL(url); win.setMenuBarVisibility(false);
+    win.setMenuBarVisibility(false);
+
+    // Toolbar across the top, page beneath it in its own view. The page being a
+    // child view is what lets the toolbar drive it from outside the page.
+    const pageView = new WebContentsView({ webPreferences: { webSecurity: false, preload: path.join(__dirname, 'preload-zoom-shared.js') } });
+    const toolbarView = createToolbarView();
+    win.contentView.addChildView(pageView);
+    win.contentView.addChildView(toolbarView);
+    pageView.webContents.loadURL(url);
+    // Zoom for this page is persisted per URL below; tell the shared handler to
+    // leave it alone so a wheel tick is not applied twice.
+    pageView.webContents._lkExternalPage = true;
+    win._lkPage = pageView;
+
+    const layoutExternalWindow = () => {
+      if (win.isDestroyed()) return;
+      const [w, h] = win.getContentSize();
+      toolbarView.setBounds({ x: 0, y: 0, width: w, height: TOOLBAR_HEIGHT });
+      pageView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width: w, height: Math.max(0, h - TOOLBAR_HEIGHT) });
+    };
+    layoutExternalWindow();
+    ['resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore']
+      .forEach(ev => win.on(ev, layoutExternalWindow));
+
+    const pushToolbarState = wireToolbar(
+      toolbarView,
+      () => (win.isDestroyed() || pageView.webContents.isDestroyed() ? null : pageView.webContents),
+      title || url,
+      () => ({ canPin: false })   // ── Split view ── windows are already separate
+    );
+    ['did-navigate', 'did-navigate-in-page', 'did-start-loading', 'did-stop-loading', 'page-title-updated']
+      .forEach(ev => pageView.webContents.on(ev, pushToolbarState));
+    wireFind(pageView, toolbarView);
+
+    pageView.webContents.on('before-input-event', (event, input) => {
+      if (isFindKey(input)) { event.preventDefault(); openFindBar(toolbarView); return; }
+      const action = navKeyAction(input);
+      if (!action) return;
+      event.preventDefault();
+      navigateExternalWindow(win, action);
+    });
+
+    // Mouse thumb buttons work here exactly as they do in a browser. (The game
+    // view is the one place they are swallowed instead.)
+    win.on('app-command', (event, command) => {
+      if (command !== 'browser-backward' && command !== 'browser-forward') return;
+      event.preventDefault();
+      navigateExternalWindow(win, command === 'browser-backward' ? 'back' : 'forward');
+    });
     applyAlwaysOnTop(win);
     applyWindowIcon(win, iconPath);
     // What this window would need to become a tab again.
     win._lkUrl = url; win._lkTitle = title; win._lkIcon = iconPath;
 
     // Right-click anywhere in the window → dock it back into the tab strip.
-    win.webContents.on('context-menu', (event, params) => {
+    pageView.webContents.on('context-menu', (event, params) => {
+      const hist = navHistory(pageView.webContents);
       const template = [
         { label: 'Dock back into tabs', click: () => dockWindowIntoTabs(win) },
         { type: 'separator' },
-        { label: 'Reload', click: () => { if (!win.isDestroyed()) win.webContents.reload(); } }
+        { label: 'Back', enabled: hist.canGoBack(), click: () => navigateExternalWindow(win, 'back') },
+        { label: 'Forward', enabled: hist.canGoForward(), click: () => navigateExternalWindow(win, 'forward') },
+        { label: 'Reload', click: () => navigateExternalWindow(win, 'reload') }
       ];
       if (params.selectionText) template.push({ label: 'Copy', role: 'copy' });
       Menu.buildFromTemplate(template).popup({ window: win });
@@ -3276,7 +4291,7 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     else openForUrl.add(win);
 
     if (!appSettings.externalWindows) appSettings.externalWindows = {};
-    if (appSettings.externalZoom && appSettings.externalZoom[url]) win.webContents.once('did-finish-load', () => { try { win.webContents.setZoomFactor(appSettings.externalZoom[url]); } catch (e) {} });
+    if (appSettings.externalZoom && appSettings.externalZoom[url]) pageView.webContents.once('did-finish-load', () => { try { pageView.webContents.setZoomFactor(appSettings.externalZoom[url]); } catch (e) {} });
 
     const saveExtBounds = () => {
       if (win && !win.isDestroyed() && !win.isMinimized()) {
@@ -3294,22 +4309,23 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
           const b = win.getBounds();
           appSettings.externalWindows[url] = { width: b.width, height: b.height, x: b.x, y: b.y };
         }
-        if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        if (!win.isDestroyed() && !pageView.webContents.isDestroyed()) {
           if (!appSettings.externalZoom) appSettings.externalZoom = {};
-          appSettings.externalZoom[url] = win.webContents.getZoomFactor();
+          appSettings.externalZoom[url] = pageView.webContents.getZoomFactor();
         }
         saveSettings();
       } catch (e) { log.warn('Failed to save external window state:', e.message); }
     });
     win.on('closed', () => {
+      releaseToolbar(toolbarView);
       const set = externalWindowsByUrl.get(url);
       if (set) { set.delete(win); if (set.size === 0) externalWindowsByUrl.delete(url); }
     });
 
-    win.webContents.on('ipc-message', (event, channel, data) => {
+    pageView.webContents.on('ipc-message', (event, channel, data) => {
       if (channel === 'zoom-wheel' && data && typeof data.deltaY === 'number') {
-        const newFactor = getNextZoomStep(win.webContents.getZoomFactor(), data.deltaY < 0);
-        win.webContents.setZoomFactor(newFactor);
+        const newFactor = getNextZoomStep(pageView.webContents.getZoomFactor(), data.deltaY < 0);
+        pageView.webContents.setZoomFactor(newFactor);
         if (!appSettings.externalZoom) appSettings.externalZoom = {};
         appSettings.externalZoom[url] = newFactor; saveSettingsDebounced();
       }
@@ -3317,8 +4333,14 @@ ipcMain.on('save-screenshot', (event, dataUrl) => {
     return win;
   }
 
-  // The mirror of tear-off. The window already knows its url, title and icon —
-  // exactly what createTab() needs — so docking is close-window + make-tab.
+  // Back / forward / reload for a torn-off window's page.
+  function navigateExternalWindow(win, action) {
+    if (!win || win.isDestroyed() || !win._lkPage) return;
+    navigateWebContents(win._lkPage.webContents, action);
+  }
+
+  // The mirror of tear-off. The window already knows its url, title and icon -
+  // exactly what createTab() needs - so docking is close-window + make-tab.
   // Closing normally (rather than destroying) lets the window save its bounds
   // and zoom on the way out, so tearing it off again restores how it was.
   function dockWindowIntoTabs(win) {

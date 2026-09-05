@@ -334,7 +334,7 @@
 
     <!-- Status bar -->
     <div class="status-bar">
-        <span id="statusLeft">—</span>
+        <span id="statusLeft">-</span>
         <span id="statusRight">Ln 1, Col 1</span>
     </div>
 
@@ -528,7 +528,7 @@
             if (!newKey || newKey === oldKey) { render(); return; }
 
             if (data.instances[newKey]) {
-                // Name collision — just cancel
+                // Name collision - just cancel
                 render();
                 return;
             }

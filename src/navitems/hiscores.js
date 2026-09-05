@@ -68,7 +68,7 @@ async function lookupPlayer() {
 
     // Same route the compare window uses, so both share one cache, one rate
     // limiter and one set of error messages. Fetching straight from here used
-    // to report every failure as "player not found" — including a rate limit,
+    // to report every failure as "player not found" - including a rate limit,
     // which is a wait-and-retry, not a missing player.
     const res = await ipcRenderer.invoke('hiscores-lookup', playerName);
     document.getElementById('loading').style.display = 'none';
@@ -85,7 +85,7 @@ async function lookupPlayer() {
 const HISCORES_ERRORS = {
     empty:       'Enter a player name.',
     notfound:    'No hiscores entry for that name.',
-    ratelimited: 'The hiscores API is rate limiting us — wait a moment and try again.',
+    ratelimited: 'The hiscores API is rate limiting us - wait a moment and try again.',
     network:     'Could not reach the hiscores API.'
 };
 

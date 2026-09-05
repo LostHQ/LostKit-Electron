@@ -403,6 +403,32 @@
                 </div>
                 <div id="nav-buttons-list" style="display:flex;flex-direction:column;gap:6px;"></div>
             </div>
+
+            <div class="folder-section">
+                <div class="section-label">Split View</div>
+                <div style="color:#b8a060;font-size:11px;margin-bottom:12px;line-height:1.5;">
+                    Adds a pin button to each tab's toolbar, which keeps that tab on screen
+                    beside whichever tab you are using. Needs a wide window - below that it
+                    quietly stays single. The game tab is never split.
+                </div>
+                <div class="setting-row">
+                    <label class="sound-checkbox-label">
+                        <input type="checkbox" id="split-view-checkbox">
+                        <span class="sound-checkmark"></span>
+                        <span>Allow split view</span>
+                    </label>
+                </div>
+            </div>
+            <div class="folder-section">
+                <div class="section-label">My Tools</div>
+                <div style="color:#b8a060;font-size:11px;margin-bottom:12px;line-height:1.5;">
+                    Your own hosted pages, added as nav buttons. They open in a tab or their own
+                    window like any built-in tool, and are kept in your settings - updates and
+                    reinstalls leave them alone.
+                </div>
+                <div id="custom-tools-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+                <button type="button" id="add-tool-btn" style="width:100%;margin-top:10px;padding:8px;">+ Add a tool</button>
+            </div>
         </div><!-- end tab-appearance -->
 
         <!-- Creators tab -->
@@ -455,7 +481,7 @@
                 <div class="section-label">Version</div>
                 <div class="setting-row" style="justify-content:space-between;">
                     <label>Installed</label>
-                    <span id="upd-current-version" style="font-size:12px;color:#51cf66;font-family:'RS-Bold',sans-serif;">—</span>
+                    <span id="upd-current-version" style="font-size:12px;color:#51cf66;font-family:'RS-Bold',sans-serif;">-</span>
                 </div>
                 <div class="setting-row" id="upd-status-row" style="justify-content:space-between;display:none;">
                     <label>Status</label>
@@ -481,7 +507,7 @@
                     <br><button id="upd-manual-download-btn" onclick="manualDownload()" style="display:none;margin-top:6px;padding:3px 10px;font-size:11px;background:#1a3a1a;border-color:#51cf66;color:#51cf66;">Download update</button>
                 </div>
                 <div style="color:#888;font-size:10px;margin-top:8px;line-height:1.5;">
-                    Updates download silently. LostKit installs on next restart — you are never interrupted.
+                    Updates download silently. LostKit installs on next restart - you are never interrupted.
                 </div>
             </div>
 
@@ -791,24 +817,64 @@
             { id: 'skillscalculator', label: 'Skills Calculator' },
             { id: 'bestiary',      label: 'Bestiary' },
             { id: 'itemdb',        label: 'Item Database' },
-            { id: 'lostcitylabs',  label: 'Lost City Labs' },
+            { id: 'addtool',       label: 'Add Tool button' },
         ];
 
         let hiddenNavButtons = [];
+        let lastTools = [];      // the user's own tools, as main last reported them
+
+        // Built-in buttons plus the user's own tools, so both hide the same way.
+        function navButtonEntries() {
+            return NAV_BUTTONS.concat(lastTools.map(t => ({
+                id: 'custom:' + t.id,
+                label: t.title,
+                icon: t.icon,
+                custom: true
+            })));
+        }
 
         function buildNavButtonsList() {
             const list = document.getElementById('nav-buttons-list');
             if (!list) return;
             list.innerHTML = '';
-            NAV_BUTTONS.forEach(btn => {
+            let customHeaderDone = false;
+
+            navButtonEntries().forEach(btn => {
+                if (btn.custom && !customHeaderDone) {
+                    customHeaderDone = true;
+                    const header = document.createElement('div');
+                    header.style.cssText = 'font-size:10px;letter-spacing:0.6px;text-transform:uppercase;color:#8a7a4a;margin:8px 0 2px;';
+                    header.textContent = 'Your tools';
+                    list.appendChild(header);
+                }
+
                 const isVisible = !hiddenNavButtons.includes(btn.id);
                 const row = document.createElement('label');
                 row.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:7px 10px;border:2px solid ' + (isVisible ? '#8b6914' : '#444') + ';border-radius:4px;transition:border-color 0.15s;';
-                row.innerHTML = `
-                    <input type="checkbox" ${isVisible ? 'checked' : ''} data-btn-id="${btn.id}"
-                        style="accent-color:#8b6914;width:15px;height:15px;cursor:pointer;">
-                    <span style="font-size:13px;color:#f0e68c;">${btn.label}</span>`;
-                row.querySelector('input').addEventListener('change', (e) => {
+
+                const check = document.createElement('input');
+                check.type = 'checkbox';
+                check.checked = isVisible;
+                check.dataset.btnId = btn.id;
+                check.style.cssText = 'accent-color:#8b6914;width:15px;height:15px;cursor:pointer;';
+
+                // Tool names come from a web page, so they are written as text,
+                // never as markup - this window can reach Node.
+                const label = document.createElement('span');
+                label.style.cssText = 'font-size:13px;color:#f0e68c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                label.textContent = btn.label;
+
+                row.appendChild(check);
+                if (btn.icon) {
+                    const img = document.createElement('img');
+                    img.src = toolIconSrc(btn.icon);
+                    img.style.cssText = 'width:16px;height:16px;object-fit:contain;flex-shrink:0;';
+                    img.onerror = () => { img.onerror = null; img.src = '../assets/utilities.png'; };
+                    row.appendChild(img);
+                }
+                row.appendChild(label);
+
+                check.addEventListener('change', (e) => {
                     if (e.target.checked) {
                         hiddenNavButtons = hiddenNavButtons.filter(id => id !== btn.id);
                     } else {
@@ -820,11 +886,118 @@
                 list.appendChild(row);
             });
         }
-
         ipcRenderer.invoke('get-hidden-nav-buttons').then(hidden => {
             hiddenNavButtons = hidden || [];
             buildNavButtonsList();
         }).catch(() => buildNavButtonsList());
+
+        // ── Custom tools ─────────────────────────────────────────────────────
+        // Icons are a file:// favicon or a path relative to src/; this window
+        // sits a folder deeper.
+        function toolIconSrc(icon) {
+            if (!icon) return '../assets/utilities.png';
+            return /^(file|data|https?):/i.test(icon) ? icon : '../' + icon;
+        }
+
+        // Fetching an icon takes a moment and can legitimately come back empty, so
+        // the row says what happened instead of leaving the button looking inert.
+        let toolStatus = null;   // { id, text, bad }
+
+        function setToolStatus(id, text, bad) {
+            toolStatus = text ? { id, text, bad } : null;
+            buildCustomToolsList(lastTools);
+        }
+
+        async function refreshToolIcon(id) {
+            setToolStatus(id, 'Fetching the site icon…');
+            const res = await ipcRenderer.invoke('refresh-custom-tool-icon', id).catch(() => null);
+            setToolStatus(id, res && res.ok ? 'Icon updated.' : 'That page did not offer an icon.', !(res && res.ok));
+            setTimeout(() => { if (toolStatus && toolStatus.id === id) setToolStatus(null); }, 3000);
+        }
+
+        function buildCustomToolsList(tools) {
+            const list = document.getElementById('custom-tools-list');
+            if (!list) return;
+            lastTools = tools || [];
+            list.innerHTML = '';
+
+            if (!tools || !tools.length) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'color:#6f6446;font-size:11px;font-style:italic;padding:6px 2px;';
+                empty.textContent = 'No tools of your own yet.';
+                list.appendChild(empty);
+                return;
+            }
+
+            tools.forEach(t => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:9px;padding:7px 10px;border:2px solid #8b6914;border-radius:4px;';
+
+                const img = document.createElement('img');
+                img.src = toolIconSrc(t.icon);
+                img.style.cssText = 'width:20px;height:20px;object-fit:contain;flex-shrink:0;';
+                img.onerror = () => { img.onerror = null; img.src = '../assets/utilities.png'; };
+
+                const text = document.createElement('div');
+                text.style.cssText = 'flex:1 1 auto;min-width:0;';
+                const name = document.createElement('div');
+                name.style.cssText = 'font-size:13px;color:#f0e68c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                name.textContent = t.title;
+                const url = document.createElement('div');
+                url.style.cssText = 'font-size:10px;color:#8a7a4a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                url.textContent = t.url;
+                text.append(name, url);
+
+                if (toolStatus && toolStatus.id === t.id) {
+                    const status = document.createElement('div');
+                    status.style.cssText = 'font-size:10px;margin-top:2px;color:' + (toolStatus.bad ? '#ff9b9b' : '#51cf66') + ';';
+                    status.textContent = toolStatus.text;
+                    text.appendChild(status);
+                }
+
+                row.append(img, text,
+                    toolAction('Edit', 'Rename or point it somewhere else', () => ipcRenderer.send('open-add-tool-window', t.id)),
+                    toolAction('Icon', 'Fetch the site icon again', () => refreshToolIcon(t.id)),
+                    toolAction('✕', 'Remove this tool', async () => {
+                        await ipcRenderer.invoke('remove-custom-tool', t.id);
+                    }, true));
+                list.appendChild(row);
+            });
+        }
+
+        function toolAction(label, title, onClick, danger) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = label;
+            btn.title = title;
+            btn.style.cssText = 'flex:0 0 auto;padding:4px 8px;font-size:11px;' + (danger ? 'color:#ff9b9b;' : '');
+            btn.addEventListener('click', () => onClick(btn));
+            return btn;
+        }
+
+        // ── Split view ──
+        const splitCheckbox = document.getElementById('split-view-checkbox');
+        ipcRenderer.invoke('get-split-view-enabled')
+            .then(on => { if (splitCheckbox) splitCheckbox.checked = on !== false; })
+            .catch(() => {});
+        splitCheckbox?.addEventListener('change', (e) => {
+            ipcRenderer.send('set-split-view-enabled', e.target.checked);
+        });
+
+        document.getElementById('add-tool-btn')?.addEventListener('click', () => ipcRenderer.send('open-add-tool-window'));
+
+        // Both lists show the same set, and removing a tool also drops its hidden
+        // id in main, so re-read that too.
+        function refreshToolViews(tools) {
+            buildCustomToolsList(tools);
+            ipcRenderer.invoke('get-hidden-nav-buttons')
+                .then(hidden => { hiddenNavButtons = hidden || []; buildNavButtonsList(); })
+                .catch(() => buildNavButtonsList());
+        }
+
+        ipcRenderer.invoke('get-custom-tools').then(refreshToolViews).catch(() => refreshToolViews([]));
+        ipcRenderer.on('custom-tools-updated', (event, tools) => refreshToolViews(tools));
+
 
         // Creators notif settings
         function saveCreatorSettings() {
@@ -862,6 +1035,14 @@
 
                 const cb = document.getElementById('upd-enabled-check');
                 if (cb) cb.checked = s.enabled !== false;
+
+                // No update path at all on macOS: say so instead of showing a
+                // toggle that does nothing.
+                if (s.unavailable) {
+                    if (cb) { cb.checked = false; cb.disabled = true; }
+                    const vRow = document.getElementById('upd-current-version');
+                    if (vRow) vRow.textContent = 'v' + s.currentVersion + ' (updates not available on macOS)';
+                }
 
                 // Status row
                 const statusRow = document.getElementById('upd-status-row');

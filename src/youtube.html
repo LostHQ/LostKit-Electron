@@ -59,7 +59,7 @@
     .yt-add-btn:hover { border: 2px inset #8b6914; transform: translateY(1px); }
     .yt-hint { font-size: 10px; color: #666; padding: 0 2px 2px; }
 
-    /* ── Channels container — flex column, slots push each other ── */
+    /* ── Channels container - flex column, slots push each other ── */
     #channels-container {
       flex: 1 1 0;
       min-height: 0;
@@ -85,7 +85,7 @@
     .yt-slot.expanded  { flex: 1 1 0; }
     .yt-slot.collapsed { flex: 0 0 auto; }
 
-    /* ── Channel header — click to collapse/expand ── */
+    /* ── Channel header - click to collapse/expand ── */
     .yt-channel-header {
       flex: 0 0 auto;
       display: flex; align-items: center; gap: 8px;
@@ -250,7 +250,7 @@ let channels = [];
 let collapsed = {};
 let pollTimer = null;
 const POLL_INTERVAL     = 30 * 1000; // matches bg polling default
-// Live detection now uses /channel/{id}/live URL check — no RSS time heuristic needed
+// Live detection now uses /channel/{id}/live URL check - no RSS time heuristic needed
 
 try {
   const saved = localStorage.getItem('yt-creators-v2');
@@ -277,10 +277,10 @@ async function resolveChannelId(input) {
     const html = await ipcRenderer.invoke('fetch-url-for-channel-id', `https://www.youtube.com/@${handle}`);
     if (html) { const m = html.match(/"channelId":"(UC[\w-]+)"/); if (m) return { channelId: m[1] }; }
   } catch(e) {}
-  throw new Error(`Could not resolve @${handle} — try the Channel ID directly`);
+  throw new Error(`Could not resolve @${handle} - try the Channel ID directly`);
 }
 
-// ── Live URL check (via main process — avoids CORS) ───────────────────────
+// ── Live URL check (via main process - avoids CORS) ───────────────────────
 // Much more reliable than RSS heuristics, works for 24/7 streams
 async function checkLiveUrl(channelId) {
   try {
@@ -349,7 +349,7 @@ async function backfillAvatars() {
   if (changed) { save(); render(); }
 }
 
-// ── RSS (video list only — live detection handled separately) ─────────────
+// ── RSS (video list only - live detection handled separately) ─────────────
 async function fetchChannelData(channelId) {
   // Run live-URL check and RSS fetch in parallel
   const [liveResult, rssRes] = await Promise.all([
@@ -407,7 +407,7 @@ function deleteChannel(id) {
   delete collapsed[id]; save(); render();
 }
 
-// ── Collapse — no re-render, just toggle classes ───────────────────────────
+// ── Collapse - no re-render, just toggle classes ───────────────────────────
 function toggleCollapse(id) {
   collapsed[id] = !collapsed[id]; save();
   const slot = document.querySelector(`.yt-slot[data-ch="${id}"]`);
@@ -423,7 +423,7 @@ async function refreshChannel(ch) {
     const wasLive = ch.isLive, prevId = ch.entries?.[0]?.videoId;
 
     // Grace period: if channel was live but check returned offline,
-    // require 3 consecutive misses before flipping — guards flaky /live URL
+    // require 3 consecutive misses before flipping - guards flaky /live URL
     // checks on very long streams (e.g. 24/7 channels like Lo-fi Girl)
     let resolvedIsLive = data.isLive;
     let resolvedVideoId = data.liveVideoId;
@@ -484,7 +484,7 @@ function openStream(videoId, isLive, title) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function timeAgo(d) {
-  if (!d) return '—';
+  if (!d) return '-';
   const m = Math.floor((Date.now()-new Date(d))/60000);
   if (m<1) return 'just now'; if (m<60) return `${m}m ago`;
   const h=Math.floor(m/60); if (h<24) return `${h}h ago`;
@@ -506,7 +506,7 @@ function renderSlot(ch) {
     badgeHtml = `<div class="yt-live-badge live"><div class="yt-live-dot"></div>LIVE NOW</div>`;
   } else {
     statusClass = 'status-offline';
-    const when = ch.entries?.[0] ? timeAgo(ch.entries[0].published) : '—';
+    const when = ch.entries?.[0] ? timeAgo(ch.entries[0].published) : '-';
     badgeHtml = `<div class="yt-live-badge offline"><div class="yt-live-dot"></div>Offline · ${when}</div>`;
   }
 
@@ -596,7 +596,7 @@ ipcRenderer.on('creator-channels-updated', (event, updatedChannels) => {
 // On load, get authoritative channel state from main process
 ipcRenderer.on('creator-channels-from-main', (event, mainChannels) => {
   if (mainChannels && mainChannels.length > 0) {
-    // Merge avatarUrls from localStorage into mainChannels — appSettings may not
+    // Merge avatarUrls from localStorage into mainChannels - appSettings may not
     // have them yet (e.g. first run after update, or save timing edge-cases)
     let localAvatars = {};
     try {

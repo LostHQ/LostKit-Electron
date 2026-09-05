@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <style>
+        @font-face {
+            font-family: 'RS-Bold';
+            src: url('../assets/fonts/RuneScape-Bold-12.otf') format('opentype');
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            background: #141414;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            margin: 0;
+            padding: 18px 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            font-family: 'RS-Bold', sans-serif;
+            font-size: 16px;
+            letter-spacing: 1px;
+            text-align: center;
+            margin: 0 0 4px;
+            text-shadow: 0 0 12px rgba(139,105,20,0.5), 1px 1px 2px #000;
+        }
+
+        .blurb {
+            color: #b8a060;
+            font-size: 11px;
+            line-height: 1.5;
+            text-align: center;
+            margin-bottom: 14px;
+        }
+
+        .field { margin-bottom: 12px; }
+
+        .field label {
+            display: block;
+            font-family: 'RS-Bold', sans-serif;
+            font-size: 11px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: #c8941c;
+            margin-bottom: 5px;
+        }
+
+        .field input {
+            width: 100%;
+            padding: 8px 10px;
+            background: #1b1b1b;
+            border: 2px inset #8b6914;
+            border-radius: 4px;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .field input:focus { border-color: #c8941c; background: #202020; }
+        .field .hint { color: #8a7a4a; font-size: 10px; margin-top: 4px; }
+            /* Live preview of what the nav button will look like once added */
+        .preview {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 11px;
+            margin-bottom: 14px;
+            border: 2px dashed #4a3c10;
+            border-radius: 4px;
+            background: rgba(139,105,20,0.06);
+            min-height: 46px;
+        }
+
+        .preview img {
+            width: 24px; height: 24px;
+            object-fit: contain;
+            flex-shrink: 0;
+        }
+
+        .preview .pv-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #f0e68c;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .preview .pv-status { font-size: 11px; color: #b8a060; }
+
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(200,148,28,0.25);
+            border-top-color: #c8941c;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error {
+            color: #ff6b6b;
+            font-size: 11px;
+            min-height: 15px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .actions { display: flex; gap: 8px; margin-top: auto; }
+
+        .actions button {
+            flex: 1 1 0;
+            padding: 9px 12px;
+            background: url('../assets/button.jpg') repeat;
+            background-size: cover;
+            border: 2px outset #8b6914;
+            border-radius: 4px;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            cursor: pointer;
+        }
+        .actions button:hover:not(:disabled) { border: 2px inset #8b6914; background-color: rgba(139,105,20,0.3); }
+        .actions button:disabled { opacity: 0.5; cursor: default; }
+        .actions button.danger { color: #ff9b9b; border-color: #7a2f2f; }
+        .actions button.ghost { background: #1b1b1b; border: 2px outset #4a4a4a; color: #b8a060; }
+    </style>
+</head>
+<body>
+    <h1 id="dialog-title">Add your own tool</h1>
+    <div class="blurb" id="dialog-blurb">
+        Point LostKit at any page you host or use - it gets a nav button,<br>
+        opens in a tab or its own window, and stays across updates.
+    </div>
+
+    <div class="field">
+        <label for="url-input">Address</label>
+        <input id="url-input" type="text" placeholder="mytool.example.com" spellcheck="false" autocomplete="off">
+        <div class="hint">https:// is added for you if you leave it off.</div>
+    </div>
+
+    <div class="field">
+        <label for="name-input">Name <span style="text-transform:none;color:#8a7a4a;">(optional)</span></label>
+        <input id="name-input" type="text" placeholder="Taken from the page itself" maxlength="40" autocomplete="off">
+    </div>
+
+    <div class="preview" id="preview">
+        <img id="pv-icon" src="../assets/utilities.png" alt="">
+        <div>
+            <div class="pv-title" id="pv-title">Your tool</div>
+            <div class="pv-status" id="pv-status">The site's own icon is used, just like a browser tab.</div>
+        </div>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <div class="actions">
+        <button type="button" class="ghost" id="cancel-btn">Cancel</button>
+        <button type="button" class="danger" id="remove-btn" style="display:none;">Remove</button>
+        <button type="button" id="submit-btn">Add tool</button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const urlInput  = document.getElementById('url-input');
+        const nameInput = document.getElementById('name-input');
+        const pvIcon    = document.getElementById('pv-icon');
+        const pvTitle   = document.getElementById('pv-title');
+        const pvStatus  = document.getElementById('pv-status');
+        const errorEl   = document.getElementById('error');
+        const submitBtn = document.getElementById('submit-btn');
+        const removeBtn = document.getElementById('remove-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+
+        // Icons arrive either as a file:// url (a captured favicon) or as a path
+        // relative to src/ - this dialog lives a folder deeper than that.
+        function iconSrc(icon) {
+            if (!icon) return '../assets/utilities.png';
+            return /^(file|data|https?):/i.test(icon) ? icon : '../' + icon;
+        }
+
+        let editingId = null;   // set when the window was opened to edit an existing tool
+        let busy = false;
+
+        function close() { ipcRenderer.send('close-add-tool-window'); }
+
+        function setBusy(on, message) {
+            busy = on;
+            submitBtn.disabled = on;
+            removeBtn.disabled = on;
+            urlInput.disabled = on;
+            nameInput.disabled = on;
+            if (on) {
+                pvIcon.style.display = 'none';
+                if (!document.getElementById('pv-spinner')) {
+                    const sp = document.createElement('div');
+                    sp.className = 'spinner';
+                    sp.id = 'pv-spinner';
+                    pvIcon.parentElement.insertBefore(sp, pvIcon);
+                }
+                pvStatus.textContent = message || 'Working…';
+            } else {
+                const sp = document.getElementById('pv-spinner');
+                if (sp) sp.remove();
+                pvIcon.style.display = '';
+            }
+        }
+
+        // Keeps the preview honest while typing: the name shown is the one that
+        // will be used if the site's own title is not picked up.
+        function updatePreview() {
+            const typed = nameInput.value.trim();
+            let fallback = '';
+            try {
+                const raw = urlInput.value.trim();
+                if (raw) fallback = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : 'https://' + raw)
+                    .hostname.replace(/^www\./, '');
+            } catch (e) {}
+            pvTitle.textContent = typed || fallback || 'Your tool';
+        }
+
+        urlInput.addEventListener('input', () => { errorEl.textContent = ''; updatePreview(); });
+        nameInput.addEventListener('input', updatePreview);
+
+        [urlInput, nameInput].forEach(el => el.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        }));
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !busy) close(); });
+
+        async function submit() {
+            if (busy) return;
+            const url = urlInput.value.trim();
+            if (!url) { errorEl.textContent = 'Enter the address of your tool.'; urlInput.focus(); return; }
+            errorEl.textContent = '';
+
+            setBusy(true, editingId ? 'Saving…' : 'Fetching the page and its icon…');
+            const res = editingId
+                ? await ipcRenderer.invoke('update-custom-tool', editingId, { url, title: nameInput.value })
+                : await ipcRenderer.invoke('add-custom-tool', { url, title: nameInput.value });
+            setBusy(false);
+
+            if (!res || !res.ok) {
+                errorEl.textContent = (res && res.error) || 'Could not add that tool.';
+                pvStatus.textContent = 'Nothing was saved.';
+                return;
+            }
+            close();
+        }
+
+        async function remove() {
+            if (busy || !editingId) return;
+            setBusy(true, 'Removing…');
+            await ipcRenderer.invoke('remove-custom-tool', editingId);
+            close();
+        }
+
+        submitBtn.addEventListener('click', submit);
+        removeBtn.addEventListener('click', remove);
+        cancelBtn.addEventListener('click', close);
+
+        // The same window serves both jobs, so each entry point states the mode
+        // rather than inheriting whatever the last one left behind.
+        function setAddMode() {
+            editingId = null;
+            document.getElementById('dialog-title').textContent = 'Add your own tool';
+            document.getElementById('dialog-blurb').innerHTML =
+                'Point LostKit at any page you host or use - it gets a nav button,<br>' +
+                'opens in a tab or its own window, and stays across updates.';
+            urlInput.value = '';
+            nameInput.value = '';
+            pvIcon.src = '../assets/utilities.png';
+            pvStatus.textContent = "The site's own icon is used, just like a browser tab.";
+            errorEl.textContent = '';
+            submitBtn.textContent = 'Add tool';
+            removeBtn.style.display = 'none';
+            updatePreview();
+            urlInput.focus();
+        }
+
+        function setEditMode(tool) {
+            editingId = tool.id;
+            document.getElementById('dialog-title').textContent = 'Edit tool';
+            document.getElementById('dialog-blurb').innerHTML =
+                'Change its name or address. A new address re-fetches the icon.';
+            urlInput.value = tool.url;
+            nameInput.value = tool.title;
+            pvIcon.src = iconSrc(tool.icon);
+            pvStatus.textContent = 'Removing it here takes the nav button away too.';
+            errorEl.textContent = '';
+            submitBtn.textContent = 'Save';
+            removeBtn.style.display = '';
+            updatePreview();
+            nameInput.focus();
+            nameInput.select();
+        }
+
+        // Sent when the window opens, and again when it is already open and the
+        // user asks for a different tool (or for a fresh add).
+        ipcRenderer.on('edit-tool', async (event, id) => {
+            if (!id) { setAddMode(); return; }
+            const tools = await ipcRenderer.invoke('get-custom-tools').catch(() => []);
+            const tool = (tools || []).find(t => t.id === id);
+            if (tool) setEditMode(tool);
+        });
+
+        urlInput.focus();
+        updatePreview();
+    </script>
+</body>
+</html>

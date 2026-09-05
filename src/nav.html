@@ -23,7 +23,7 @@
                 <span id="update-badge" style="display:none;position:absolute;top:2px;right:2px;width:10px;height:10px;background:#51cf66;border-radius:50%;border:2px solid #141414;box-shadow:0 0 6px #51cf66;"></span>
             </div>
             <div class="nav-button screenshot-btn" onclick="ipcRenderer.send('open-calculator')" title="Calculator">
-                <img src="assets/calculator.png" class="nav-icon" style="width:30px; height:30px;">
+                <img src="assets/calculator.png" class="nav-icon calc-icon">
             </div>
         </div>
         <!-- strip toggle moved to header -->
@@ -100,9 +100,11 @@
             <img src="assets/itemdb.png" class="nav-icon">
             <span>Item Database</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
         </div>
-        <div class="nav-button link" data-url='https://www.lostcitylabs.com' data-nav-id="lostcitylabs" data-title="Lost City Labs" onclick="addTab('https://www.lostcitylabs.com', 'Lost City Labs', 'assets/lcl.png')">
-            <img src="assets/lcl.png" class="nav-icon">
-            <span>Lost City Labs</span><span class="open-external" onclick="event.stopPropagation(); openExternalFrom(this.parentElement)"><img src="assets/external-link.svg" alt="" class="icon" /></span>
+        <!-- Tools the user added themselves, painted from settings at load -->
+        <div id="custom-tools"></div>
+        <div class="nav-button add-tool-btn" data-nav-id="addtool" onclick="openAddTool()" title="Add one of your own tools">
+            <div class="nav-icon add-tool-plus">+</div>
+            <span>Add Tool</span>
         </div>
     </div>
     <script>
@@ -167,9 +169,11 @@
             if (icon) icon.textContent = collapsed ? '⮜' : '⮞';
         });
 
+        let hiddenNavIds = [];
         function applyNavVisibility(hiddenIds) {
+            hiddenNavIds = hiddenIds || [];
             document.querySelectorAll('[data-nav-id]').forEach(el => {
-                el.style.display = hiddenIds.includes(el.getAttribute('data-nav-id')) ? 'none' : '';
+                el.style.display = hiddenNavIds.includes(el.getAttribute('data-nav-id')) ? 'none' : '';
             });
         }
 
@@ -188,13 +192,58 @@
 
         // Apply visibility on load
         ipcRenderer.invoke('get-hidden-nav-buttons').then(hiddenIds => {
-            if (hiddenIds && hiddenIds.length) applyNavVisibility(hiddenIds);
+            applyNavVisibility(hiddenIds || []);
         }).catch(() => {});
 
         // React to live updates from settings
         ipcRenderer.on('update-nav-visibility', (event, hiddenIds) => {
             applyNavVisibility(hiddenIds);
         });
+
+        // ── Custom tools ─────────────────────────────────────────────────────
+        function openAddTool() { ipcRenderer.send('open-add-tool-window'); }
+
+        // Same markup as the built-in links, so custom tools get tab, window,
+        // tear-off and dock behaviour without any extra handling.
+        function renderCustomTools(tools) {
+            const host = document.getElementById('custom-tools');
+            if (!host) return;
+            host.innerHTML = '';
+            (tools || []).forEach(t => {
+                const el = document.createElement('div');
+                el.className = 'nav-button link custom-tool';
+                el.dataset.url = t.url;
+                el.dataset.title = t.title;
+                el.dataset.navId = 'custom:' + t.id;
+                el.title = t.title + ' - ' + t.url + '\nRight-click for options';
+
+                const icon = document.createElement('img');
+                icon.className = 'nav-icon';
+                icon.src = t.icon;
+                icon.onerror = () => { icon.onerror = null; icon.src = 'assets/utilities.png'; };
+
+                const label = document.createElement('span');
+                label.textContent = t.title;
+
+                const ext = document.createElement('span');
+                ext.className = 'open-external';
+                ext.title = 'Open in its own window';
+                ext.innerHTML = '<img src="assets/external-link.svg" alt="" class="icon" />';
+                ext.addEventListener('click', e => { e.stopPropagation(); openExternal(t.url, t.title, t.icon); });
+
+                el.append(icon, label, ext);
+                el.addEventListener('click', () => addTab(t.url, t.title, t.icon));
+                el.addEventListener('contextmenu', e => {
+                    e.preventDefault();
+                    ipcRenderer.send('custom-tool-menu', t.id);
+                });
+                host.appendChild(el);
+            });
+            applyNavVisibility(hiddenNavIds);
+        }
+
+        ipcRenderer.invoke('get-custom-tools').then(renderCustomTools).catch(() => {});
+        ipcRenderer.on('custom-tools-updated', (event, tools) => renderCustomTools(tools));
 
         // ── Update badge ──────────────────────────────────────────────────────
         const updateBadge = document.getElementById('update-badge');
@@ -221,7 +270,7 @@
                 updateBadge.style.boxShadow = '0 0 6px #51cf66';
                 updateBadge.style.animation = 'none';
             }
-            if (settingsBtn) settingsBtn.title = `Settings (v${version} ready — restart to apply)`;
+            if (settingsBtn) settingsBtn.title = `Settings (v${version} ready - restart to apply)`;
         });
     </script>
 </body>

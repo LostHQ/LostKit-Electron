@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" type="text/css" href="../main.css" />
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body { height: 100%; }
+
+        body {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 0 8px;
+            background: linear-gradient(180deg, #1e1c18 0%, #16140f 100%);
+            border-bottom: 1px solid #5a4510;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 24px;
+            padding: 0;
+            font-size: 12px;
+            line-height: 1;
+            border: none;
+            border-radius: 4px;
+            background: #3d2807;
+            color: #f0e68c;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            flex: 0 0 auto;
+        }
+
+        button:hover:not(:disabled) { background: #8b6914; color: #fff; }
+        button:disabled { color: #5c5240; cursor: default; }
+
+        #reload.loading { animation: spin 0.8s linear infinite; }
+
+        /* Split view: lit while a split is showing */
+        #split.on { background: #8b6914; color: #fff; }
+
+        /* The lock only appears once there is a split to freeze */
+        #split-lock { font-size: 11px; }
+        #split-lock.on { background: #8b6914; color: #fff; }
+
+        /* Why a button did nothing, said in the title's place for a moment */
+        #title.notice { color: #c8941c; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* The find bar takes the title's place while it is open, so the toolbar
+           keeps its height and the page below never shifts. */
+        #find {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            flex: 1 1 auto;
+            min-width: 0;
+            margin-left: 8px;
+        }
+
+        #find-input {
+            flex: 1 1 auto;
+            min-width: 40px;
+            height: 22px;
+            padding: 0 7px;
+            background: #1b1b1b;
+            border: 1px solid #5a4510;
+            border-radius: 4px;
+            color: #f0e68c;
+            font-family: 'RS-Plain', sans-serif;
+            font-size: 12px;
+            outline: none;
+        }
+        #find-input:focus { border-color: #c8941c; background: #202020; }
+        #find-input.no-match { border-color: #a33; color: #ff9b9b; }
+
+        #find-count {
+            flex: 0 0 auto;
+            font-size: 11px;
+            color: #8a7a4a;
+            min-width: 42px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        #title {
+            flex: 1 1 auto;
+            min-width: 0;
+            margin-left: 8px;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #b8a060;
+        }
+    </style>
+</head>
+<body>
+    <button id="back" title="Back">&#9664;</button>
+    <button id="forward" title="Forward">&#9654;</button>
+    <button id="reload" title="Reload">&#10227;</button>
+    <button id="split" title="Show another tab beside this one" hidden>&#9707;</button>
+    <button id="split-lock" title="Lock this pair" hidden>&#128275;</button>
+    <div id="title"></div>
+
+    <div id="find" hidden>
+        <input id="find-input" type="text" placeholder="Find in page" spellcheck="false" autocomplete="off">
+        <span id="find-count"></span>
+        <button id="find-prev" title="Previous match (Shift+Enter)">&#9650;</button>
+        <button id="find-next" title="Next match (Enter)">&#9660;</button>
+        <button id="find-close" title="Close (Esc)">&#10005;</button>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const backBtn = document.getElementById('back');
+        const forwardBtn = document.getElementById('forward');
+        const reloadBtn = document.getElementById('reload');
+        const titleEl = document.getElementById('title');
+
+        // Which window this toolbar belongs to is decided in the main process
+        // from the sender, so the action is all that travels.
+        backBtn.addEventListener('click', () => ipcRenderer.send('window-nav', 'back'));
+        forwardBtn.addEventListener('click', () => ipcRenderer.send('window-nav', 'forward'));
+        reloadBtn.addEventListener('click', () => ipcRenderer.send('window-nav', 'reload'));
+
+        // ── Split view ──
+        // Tab toolbars only; main sends canPin:false for torn-off windows.
+        const splitBtn = document.getElementById('split');
+        splitBtn.addEventListener('click', () => ipcRenderer.send('toggle-split'));
+
+        // Lock freezes the pair. Unlocked, the split follows tab clicks; locked,
+        // a third tab opens on its own and the pair waits.
+        const splitLockBtn = document.getElementById('split-lock');
+        splitLockBtn.addEventListener('click', () => ipcRenderer.send('toggle-split-lock'));
+
+        function setSplitState(state) {
+            splitBtn.hidden = !state.canPin;
+            splitBtn.classList.toggle('on', !!state.pinned);
+            splitBtn.title = state.pinned
+                ? 'Close the split view'
+                : 'Show another tab beside this one';
+
+            splitLockBtn.hidden = !state.canPin || !state.pinned;
+            splitLockBtn.classList.toggle('on', !!state.locked);
+            // open padlock when it can still follow you, closed when frozen
+            splitLockBtn.innerHTML = state.locked ? '&#128274;' : '&#128275;';
+            splitLockBtn.title = state.locked
+                ? 'These two tabs are locked together - click to let the split follow your tabs again'
+                : 'Lock these two tabs together so other tabs do not replace them';
+        }
+
+        // A refusal has to say so - the first version just sat there looking
+        // broken when the window was too narrow.
+        let noticeTimer = null;
+        let lastTitle = '';
+        ipcRenderer.on('toolbar-message', (event, message) => {
+            if (!message) return;
+            clearTimeout(noticeTimer);
+            titleEl.textContent = message;
+            titleEl.title = message;
+            titleEl.classList.add('notice');
+            noticeTimer = setTimeout(() => {
+                titleEl.classList.remove('notice');
+                titleEl.textContent = lastTitle;
+                titleEl.title = lastTitle;
+            }, 3200);
+        });
+
+        ipcRenderer.on('window-nav-state', (event, state) => {
+            if (!state) return;
+            backBtn.disabled = !state.canGoBack;
+            forwardBtn.disabled = !state.canGoForward;
+            reloadBtn.classList.toggle('loading', !!state.loading);
+            lastTitle = state.title || '';
+            if (!titleEl.classList.contains('notice')) {
+                titleEl.textContent = lastTitle;
+                titleEl.title = lastTitle;
+            }
+            setSplitState(state);
+        });
+
+        // ── Find in page ─────────────────────────────────────────────────────
+        // Ctrl+F from the page below, or from this bar when it has focus.
+        // Toolbar owns the box, main runs the search.
+        const findEl = document.getElementById('find');
+        const findInput = document.getElementById('find-input');
+        const findCount = document.getElementById('find-count');
+
+        function setFindResult(result) {
+            const matches = result ? result.matches : 0;
+            const active = result ? result.active : 0;
+            const searching = findInput.value.length > 0;
+            findCount.textContent = !searching ? '' : (matches ? active + '/' + matches : 'none');
+            findInput.classList.toggle('no-match', searching && !matches);
+        }
+
+        function openFind() {
+            findEl.hidden = false;
+            titleEl.hidden = true;
+            findInput.focus();
+            findInput.select();
+            if (findInput.value) search(false, true);
+        }
+
+        function closeFind() {
+            findEl.hidden = true;
+            titleEl.hidden = false;
+            findInput.classList.remove('no-match');
+            findCount.textContent = '';
+            // Distinct from find-stop: closing hands focus back to the page,
+            // whereas emptying the box while still typing must not.
+            ipcRenderer.send('find-close');
+        }
+
+        // advance=false: a query that has just changed, searched from the top.
+        // advance=true:  step to the next or previous match of the same query.
+        function search(advance, forward) {
+            const text = findInput.value;
+            if (!text) { ipcRenderer.send('find-stop'); setFindResult(null); return; }
+            ipcRenderer.send('find-query', { text, advance, forward });
+        }
+
+        findInput.addEventListener('input', () => search(false, true));
+        findInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); search(true, !e.shiftKey); }
+            else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+            else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); findInput.select(); }
+        });
+        document.getElementById('find-next').addEventListener('click', () => { search(true, true); findInput.focus(); });
+        document.getElementById('find-prev').addEventListener('click', () => { search(true, false); findInput.focus(); });
+        document.getElementById('find-close').addEventListener('click', closeFind);
+
+        ipcRenderer.on('find-open', openFind);
+        ipcRenderer.on('find-result', (event, result) => setFindResult(result));
+        // A new page makes the current matches meaningless.
+        ipcRenderer.on('find-reset', () => { if (!findEl.hidden) closeFind(); });
+    </script>
+</body>
+</html>

@@ -14,7 +14,33 @@
   <div id="chat-resizer">
     <div id="chat-resizer-line"></div>
   </div>
+  <!-- Split view: the draggable seam between the two panes. It sits in the gap
+       the two views leave unpainted, which is how the chat resizer works too. -->
+  <div id="split-divider">
+    <div id="split-divider-line"></div>
+  </div>
   <style>
+    #split-divider {
+      position: fixed;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: ew-resize;
+      z-index: 12;
+      background: #141414;
+    }
+    #split-divider-line {
+      width: 2px;
+      height: 100%;
+      background: linear-gradient(180deg, transparent 0%, #5a4510 8%, #8b6914 50%, #5a4510 92%, transparent 100%);
+      pointer-events: none;
+      transition: background 0.15s;
+    }
+    #split-divider:hover #split-divider-line,
+    #split-divider.dragging #split-divider-line {
+      background: linear-gradient(180deg, transparent 0%, #8b6914 8%, #c8941c 50%, #8b6914 92%, transparent 100%);
+    }
+
     #chat-resizer {
       position: fixed;
       left: 0;
@@ -97,7 +123,7 @@
     const tabsEl = document.getElementById('tabs');
 
     // Paints a tab: tool icon, then the name, then the close button
-    // (the game view tab has no close button — it can't be closed).
+    // (the game view tab has no close button - it can't be closed).
     function renderTab(tabEl, title, icon) {
       if (icon != null) tabEl.dataset.icon = icon;
       if (title != null) tabEl.dataset.title = title;
@@ -122,7 +148,47 @@
         tabEl.appendChild(close);
       }
       tabEl.title = label;
+      applySplitBadges();
     }
+
+    // ── Split view ──────────────────────────────────────────────────────
+    // Marks which tabs are on screen as panes, and which side each is on.
+    let splitTabs = null;   // { leftId, rightId }
+
+    function applySplitBadges() {
+      tabsEl.querySelectorAll('.tab').forEach(tabEl => {
+        const id = tabEl.dataset.id;
+        const side = !splitTabs ? null
+          : (id === splitTabs.leftId ? 'left' : (id === splitTabs.rightId ? 'right' : null));
+        tabEl.classList.toggle('split', !!side);
+        let badge = tabEl.querySelector('.split-badge');
+        if (!side) { if (badge) badge.remove(); return; }
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'split-badge';
+          badge.draggable = false;
+          tabEl.insertBefore(badge, tabEl.firstChild);
+        }
+        // A filled half shows which side of the split this tab is showing on;
+        // a padlock is added when the two tabs are locked together.
+        const locked = !!splitTabs.locked;
+        // A locked pair keeps its marks while you are on some other tab, only
+        // fainter - the pair is still set up, one click away from coming back.
+        const showing = splitTabs.showing !== false;
+        const sideMark = side === 'left' ? '◧' : '◨';
+        badge.textContent = sideMark + (locked ? String.fromCodePoint(0x1F512) : '');
+        badge.title = showing
+          ? 'Split view: showing in the ' + side + ' pane' + (locked ? ' - locked to this pair' : '')
+          : 'Locked split pair - click either tab to bring it back (' + side + ' pane)';
+        tabEl.classList.toggle('split-locked', locked);
+        tabEl.classList.toggle('split-idle', !showing);
+      });
+    }
+
+    ipcRenderer.on('update-split-tabs', (event, info) => {
+      splitTabs = info;
+      applySplitBadges();
+    });
 
     const mainTabEl = tabsEl.querySelector('.tab[data-id="main"]');
     if (mainTabEl) renderTab(mainTabEl);
@@ -155,7 +221,7 @@
     }
 
     function reorderDuringDrag(clientX) {
-      // The game view tab is pinned first, so it is never a drop target —
+      // The game view tab is pinned first, so it is never a drop target -
       // nothing can be inserted in front of it.
       const others = tabsInStrip().filter(t => t !== drag.el && t.dataset.id !== 'main');
       let insertBefore = null;
@@ -264,7 +330,7 @@
     });
 
     // An external window is hovering over the strip and would dock here if
-    // released — light the strip up so the drop point is obvious.
+    // released - light the strip up so the drop point is obvious.
     ipcRenderer.on('tab-strip-drop-target', (event, active) => {
       tabsEl.classList.toggle('drop-target', active);
     });
@@ -316,6 +382,72 @@
         ipcRenderer.send('set-chat-height', bottom);
         isResizing = false;
       }
+    });
+
+    // ── Split view ──────────────────────────────────────────────────────
+    // Draggable seam between the panes. Main sends its position; dragging it
+    // sets the pane ratio.
+    const splitDivider = document.getElementById('split-divider');
+    let splitRect = null;          // where main last put the seam
+    let splitDragging = false;
+
+    ipcRenderer.on('update-split-divider', (event, rect) => {
+      splitRect = rect;
+      if (!rect) {
+        if (!splitDragging) splitDivider.style.display = 'none';
+        return;
+      }
+      splitDivider.style.display = 'flex';
+      splitDivider.style.left = rect.x + 'px';
+      splitDivider.style.top = rect.y + 'px';
+      splitDivider.style.width = rect.width + 'px';
+      splitDivider.style.height = rect.height + 'px';
+    });
+
+    // The panes start at x = 0, so the cursor's x over the width the two panes
+    // share is the ratio. Main clamps it, so a wild drag cannot kill a pane.
+    function splitRatioFromX(clientX) {
+      if (!splitRect || !splitRect.usable) return null;
+      return Math.min(0.9, Math.max(0.1, clientX / splitRect.usable));
+    }
+
+    splitDivider.addEventListener('pointerdown', (e) => {
+      if (!splitRect) return;
+      splitDragging = true;
+      splitDivider.classList.add('dragging');
+      try { splitDivider.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+
+    splitDivider.addEventListener('pointermove', (e) => {
+      if (!splitDragging) return;
+      const ratio = splitRatioFromX(e.clientX);
+      if (ratio != null) ipcRenderer.send('set-split-ratio', ratio);
+    });
+
+    const endSplitDrag = (e) => {
+      if (!splitDragging) return;
+      splitDragging = false;
+      splitDivider.classList.remove('dragging');
+      try { splitDivider.releasePointerCapture(e.pointerId); } catch (err) {}
+      ipcRenderer.send('commit-split-ratio');
+      if (!splitRect) splitDivider.style.display = 'none';
+    };
+    splitDivider.addEventListener('pointerup', endSplitDrag);
+    splitDivider.addEventListener('pointercancel', endSplitDrag);
+
+    // Fallback for the case where pointer capture does not follow the cursor
+    // across the native views either side of the seam.
+    document.addEventListener('mousemove', (e) => {
+      if (!splitDragging) return;
+      const ratio = splitRatioFromX(e.clientX);
+      if (ratio != null) ipcRenderer.send('set-split-ratio', ratio);
+    });
+    document.addEventListener('mouseup', () => {
+      if (!splitDragging) return;
+      splitDragging = false;
+      splitDivider.classList.remove('dragging');
+      ipcRenderer.send('commit-split-ratio');
     });
 
     // Store current alert sound so we can stop it on click

@@ -9,7 +9,7 @@ let soundAlert = false;
 let soundVolume = 60;
 let autoLoop = false;
 let afkGameClick = false; // Reset AFK timer when clicking on game tab
-let afkInputType = 'click'; // game click — hover mode removed
+let afkInputType = 'click'; // game click - hover mode removed
 let customSoundPath = ''; // Path to custom sound file
 let alertThreshold = 10; // Seconds before end to alert (default 10s)
 let color = '#00ff00';
@@ -375,11 +375,11 @@ function updateDisplay() {
         const remaining = 90 - seconds;
         
         if (remaining <= 0) {
-            // Past logout — show negative time, static red, no flash
+            // Past logout - show negative time, static red, no flash
             timerDisplay.textContent = formatTime(remaining);
             timerDisplay.classList.remove('flash-red');
             timerDisplay.style.color = '#ff0000';
-            // soundPlayed stays true — no replay when drifting negative
+            // soundPlayed stays true - no replay when drifting negative
         } else {
             timerDisplay.textContent = formatTime(remaining);
             
@@ -444,7 +444,7 @@ function updateModeOptionsVisibility() {
 
     if (currentMode === 'afk') {
         if (afkModeOptions) afkModeOptions.style.display = 'block';
-        // In AFK mode: the input checkbox drives start/stop — hide buttons and auto-loop
+        // In AFK mode: the input checkbox drives start/stop - hide buttons and auto-loop
         if (controlButtons) controlButtons.style.display = 'none';
         if (autoLoopRow) autoLoopRow.style.display = 'none';
     } else {
@@ -455,7 +455,14 @@ function updateModeOptionsVisibility() {
     // Countdown settings are shown in setMode function already
 }
 
+// Main owns the count while it is sending ticks; counting here too gave two 1Hz
+// sources on one number and made the timer skip. Falls back to local counting
+// if main goes quiet.
+let lastTickFromMain = 0;
+function mainIsCounting() { return Date.now() - lastTickFromMain < 2500; }
+
 function tick() {
+    if (mainIsCounting()) return;
     // For AFK mode, keep counting indefinitely (display goes negative past 90s)
     // For countdown mode, stop at max time (unless auto-loop)
     if (currentMode === 'countdown') {
@@ -712,7 +719,7 @@ autoLoopCheckbox.addEventListener('change', () => {
     ipcRenderer.send('update-background-timer-settings', { autoLoop: autoLoop });
 });
 
-// AFK Game Click checkbox — also starts/stops the AFK timer
+// AFK Game Click checkbox - also starts/stops the AFK timer
 afkGameClickCheckbox.addEventListener('change', () => {
     afkGameClick = afkGameClickCheckbox.checked;
     saveConfig();
@@ -1111,7 +1118,7 @@ ipcRenderer.on('sound-selected', (event, soundPath) => {
 // → PAUSE timer and reset display to 1:30
 ipcRenderer.on('afk-hover-paused', () => {
     if (currentMode !== 'afk') return;
-    console.log('nav panel: afk-hover-paused — stopping & resetting display');
+    console.log('nav panel: afk-hover-paused - stopping & resetting display');
     if (interval) {
         clearInterval(interval);
         interval = null;
@@ -1128,7 +1135,7 @@ ipcRenderer.on('afk-hover-paused', () => {
 // → START/RESTART countdown from 1:30
 ipcRenderer.on('afk-hover-resumed', () => {
     if (currentMode !== 'afk') return;
-    console.log('nav panel: afk-hover-resumed — restarting display from 0');
+    console.log('nav panel: afk-hover-resumed - restarting display from 0');
     seconds = 0;
     soundPlayed = false;
     timerDisplay.classList.remove('flash-red');
@@ -1142,6 +1149,7 @@ ipcRenderer.on('afk-hover-resumed', () => {
 
 // Listen for game-click background timer ticks to sync display
 ipcRenderer.on('game-click-timer-tick', (event, bgSeconds) => {
+    lastTickFromMain = Date.now();
     // Sync the stopwatch display with the background timer when in AFK mode
     if (currentMode === 'afk' && afkGameClick) {
         seconds = bgSeconds;
@@ -1151,6 +1159,7 @@ ipcRenderer.on('game-click-timer-tick', (event, bgSeconds) => {
 
 // Listen for unified background timer ticks to sync display
 ipcRenderer.on('background-timer-tick', (event, data) => {
+    lastTickFromMain = Date.now();
     // Sync the stopwatch display with the background timer
     if (currentMode === data.mode) {
         seconds = data.seconds;

@@ -162,7 +162,7 @@
       ytd-feed-filter-chip-bar-renderer { display: none !important; }
 
       /* Keep ytd-watch-metadata in the DOM (so YT updates viewer count)
-         but visually hide it — position off-screen, zero height */
+         but visually hide it - position off-screen, zero height */
       ytd-watch-metadata {
         position: fixed !important;
         top: -9999px !important; left: -9999px !important;
@@ -191,12 +191,12 @@
       wv.insertCSS(HIDE_CHROME_CSS).catch(() => {});
     }
 
-    // ── Stream webview — persistent session so YT login is remembered ────────
+    // ── Stream webview - persistent session so YT login is remembered ────────
     function buildStreamWebview() {
       const pane = document.getElementById('stream-pane');
       const wv   = document.createElement('webview');
       wv.setAttribute('allowpopups', '');
-      // persist:youtube — saves cookies/login across restarts
+      // persist:youtube - saves cookies/login across restarts
       wv.setAttribute('partition', 'persist:youtube');
       wv.src = `https://www.youtube.com/watch?v=${videoId}&autoplay=1`;
       pane.appendChild(wv);
@@ -214,7 +214,7 @@
       const pane = document.getElementById('chat-pane');
 
       if (isLive) {
-        // Live stream — popout chat: full read + write, login-aware
+        // Live stream - popout chat: full read + write, login-aware
         const wv = document.createElement('webview');
         wv.setAttribute('allowpopups', '');
         wv.setAttribute('partition', 'persist:youtube');
@@ -222,7 +222,7 @@
         pane.appendChild(wv);
         chatWv = wv;
       } else {
-        // VOD — chat replay has no standalone URL, show a clear message
+        // VOD - chat replay has no standalone URL, show a clear message
         pane.innerHTML = `
           <div style="
             display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -285,7 +285,7 @@
       const streamPane = document.getElementById('stream-pane');
       const btn = document.getElementById('btn-video');
       if (hidden) {
-        // Collapse stream pane to zero width WITHOUT display:none — audio keeps playing
+        // Collapse stream pane to zero width WITHOUT display:none - audio keeps playing
         streamPane.style.flex = '0 0 0';
         streamPane.style.overflow = 'hidden';
         streamPane.style.minWidth = '0';
@@ -323,7 +323,7 @@
     }
 
     // ── Stream title + viewer count polling ──────────────────────────────────
-    // Fetches the YT watch page HTML from main process and parses ytInitialData —
+    // Fetches the YT watch page HTML from main process and parses ytInitialData -
     // far more reliable than DOM scraping inside the webview.
     let infoPoller = null;
 
@@ -337,14 +337,14 @@
     async function fetchStreamInfo() {
       if (!videoId) return;
       try {
-        // Fetch the raw watch page from main process — avoids all webview DOM issues
+        // Fetch the raw watch page from main process - avoids all webview DOM issues
         const html = await ipcRenderer.invoke('fetch-url-for-channel-id',
           `https://www.youtube.com/watch?v=${videoId}`);
         if (!html) return;
 
         // ── Title ──────────────────────────────────────────────────────────
         let title = null;
-        // og:title is the cleanest source — always present, no "- YouTube" suffix
+        // og:title is the cleanest source - always present, no "- YouTube" suffix
         const ogTitle = html.match(/<meta property="og:title" content="([^"]+)"/);
         if (ogTitle) title = ogTitle[1].replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
         if (!title) {
@@ -389,7 +389,7 @@
 
         const vcSpan = document.getElementById('viewer-count');
         if (isLive && viewers) {
-          // Trim to just the number + "watching" — strip "now", extra whitespace
+          // Trim to just the number + "watching" - strip "now", extra whitespace
           const clean = viewers.replace(/\s+now$/i,'').replace(/\s+/g,' ').trim();
           vcSpan.textContent = '👁 ' + clean;
           vcSpan.style.display = '';
@@ -416,7 +416,7 @@
           setVideoHidden(true);
         });
       } else if (prefs.videoHidden) {
-        // Restore audio-only mode — open chat if it was open too
+        // Restore audio-only mode - open chat if it was open too
         prevWinWidth = prefs.prevWinWidth || 960;
         if (prefs.chatOpen) toggleChat();
         setVideoHidden(true);

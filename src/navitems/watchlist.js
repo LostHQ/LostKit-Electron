@@ -1,6 +1,6 @@
 const { ipcRenderer } = require('electron');
 
-// Direction is written from the user's point of view — "I'm buying" watches
+// Direction is written from the user's point of view - "I'm buying" watches
 // other people's sell listings, and vice versa. The main process owns the same
 // rule; this file only has to phrase it.
 let picked = null;            // { id, name, slug, cost }
@@ -15,7 +15,7 @@ const $ = (id) => document.getElementById(id);
 const spriteUrl = (slug) => `https://markets.lostcity.rs/img/items/${encodeURIComponent(slug)}.webp`;
 
 function formatGp(n) {
-    if (n == null) return '—';
+    if (n == null) return '-';
     if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 === 0 ? 0 : 1).replace(/\.0$/, '') + 'm';
     if (n >= 100000) return Math.round(n / 1000) + 'k';
     return n.toLocaleString();
@@ -45,7 +45,7 @@ function timeAgo(iso) {
 
 // ── Item search ─────────────────────────────────────────────────────────────
 // Two boxes use this: the quick-check slot at the top and the watch form below.
-// Same endpoint and same result rows — only where the pick lands differs.
+// Same endpoint and same result rows - only where the pick lands differs.
 function wireSearch(inputId, boxId, onPick) {
     const input = $(inputId);
     const box = $(boxId);
@@ -78,7 +78,7 @@ function wireSearch(inputId, boxId, onPick) {
                 const name = document.createElement('span');
                 name.className = 'wl-label';
                 name.textContent = item.name;
-                // The API also hands back `cost` — the item config's shop value,
+                // The API also hands back `cost` - the item config's shop value,
                 // which high alch pays 60% of. It is deliberately not shown: in
                 // a panel about prices, any number on the row reads as a price,
                 // and it is not one. A santa hat's value is 160; it trades for
@@ -117,7 +117,7 @@ wireSearch('quick-search', 'quick-results', quickCheck);
 
 // ── Quick check ─────────────────────────────────────────────────────────────
 // One slot, one item, answered in a couple of seconds: what does it cost and
-// what will it fetch. No watch to create, nothing saved — the common case is
+// what will it fetch. No watch to create, nothing saved - the common case is
 // "someone just offered me this, is that fair?", which a watch is far too much
 // machinery for.
 let quickItem = null;
@@ -146,7 +146,7 @@ async function quickCheck(item) {
     }
     // Labelled by what YOU would do. Someone else's sell listing is the side
     // you buy from, so it is the price you pay.
-    // Phrased as a condition and an action — "if you buy … pay 279.8m" — rather
+    // Phrased as a condition and an action - "if you buy … pay 279.8m" - rather
     // than leaving the reader to work out whose side of the trade a number is
     // on. Same wording as the price history window, so the two agree.
     body.append(
@@ -162,7 +162,7 @@ async function quickCheck(item) {
 const quickOpen = { pay: false, get: false };
 
 // A side of the book: the summary line, and the offers behind it folded away
-// underneath. Everything is here, but only the answer is on screen — the panel
+// underneath. Everything is here, but only the answer is on screen - the panel
 // shares a 250px column with the watch list and cannot spend 300px on a lookup.
 function quickSide(cls, label, verb, s, who, bestSide) {
     const frag = document.createDocumentFragment();
@@ -178,7 +178,7 @@ function quickSide(cls, label, verb, s, who, bestSide) {
     sub.className = 'wl-qsub';
 
     if (!s || s.avg == null) {
-        val.textContent = '—';
+        val.textContent = '-';
         val.classList.add('none');
         // "Nobody is offering", "offers, but none in coins" and "the only offer
         // was a placeholder" are three different answers, and only the first
@@ -196,7 +196,7 @@ function quickSide(cls, label, verb, s, who, bestSide) {
 
     const counted = s.count - s.barter - (s.suspect || 0);
     // The headline is the best standing offer, not the average. "If you buy,
-    // you pay 345" is untrue when someone is selling at 330 — you would pay
+    // you pay 345" is untrue when someone is selling at 330 - you would pay
     // 330. The average is the fair-value answer and stays one line down.
     const best = bestSide === 'max' ? s.max : s.min;
     // The verb rides on the number, where it cannot be missed and costs no
@@ -222,7 +222,7 @@ function quickSide(cls, label, verb, s, who, bestSide) {
     if (s.fromNotes) caveats.push(`${s.fromNotes} read from the seller's notes`);
     if (s.suspect) caveats.push(`${s.suspect} placeholder ignored`);
 
-    row.title = `${label} right now, you ${verb} ${best.toLocaleString()} gp each — ` +
+    row.title = `${label} right now, you ${verb} ${best.toLocaleString()} gp each - ` +
                 `${bestSide === 'max' ? 'the most anyone is paying' : 'the cheapest on offer'}.\n` +
                 `That is one player's offer, so it goes when they trade or pull it.\n\n` +
                 `average ${s.avg.toLocaleString()} gp · median ${s.median.toLocaleString()} gp\n` +
@@ -249,8 +249,8 @@ function quickSide(cls, label, verb, s, who, bestSide) {
     return frag;
 }
 
-// The offers behind the numbers. A coin offer needs no explaining — the price
-// is the offer — but an item offer's gp figure is our own estimate, so what is
+// The offers behind the numbers. A coin offer needs no explaining - the price
+// is the offer - but an item offer's gp figure is our own estimate, so what is
 // actually on the table gets spelled out underneath it.
 const QUICK_OFFERS_SHOWN = 4;
 
@@ -267,7 +267,7 @@ function quickOffers(s, bestSide, caveats) {
         row.onclick = () => { if (quickItem) ipcRenderer.send('open-market-item', quickItem.slug); };
         row.title = `${o.offer}${o.quantity > 1 ? ` for ${o.quantity.toLocaleString()}` : ''}` +
                     (o.notes ? `\n"${o.notes}"` : '') +
-                    (o.valued ? '\n\nPaid in items — the gp figure is our valuation at today\'s prices.' : '') +
+                    (o.valued ? '\n\nPaid in items - the gp figure is our valuation at today\'s prices.' : '') +
                     (o.fromNotes ? '\n\nThe coin field was a placeholder; this price came from the notes.' : '');
 
         const price = document.createElement('span');
@@ -306,7 +306,7 @@ function quickSpread(live) {
     row.className = 'wl-qrow spread';
     // Best against best, matching the two rows above. Averaged against averaged
     // it claimed flax cost 12% to round-trip when the real gap between the
-    // cheapest seller and the best buyer was 5gp — a difference that decides
+    // cheapest seller and the best buyer was 5gp - a difference that decides
     // whether a flip is worth doing at all.
     const buyAt = live.sell && live.sell.min;      // cheapest you can buy at
     const sellAt = live.buy && live.buy.max;       // most you can sell for
@@ -319,7 +319,7 @@ function quickSpread(live) {
     sub.className = 'wl-qsub';
 
     if (buyAt == null || sellAt == null) {
-        val.textContent = '—';
+        val.textContent = '-';
         val.classList.add('none');
         sub.textContent = 'only one side has coin offers';
     } else if (buyAt >= sellAt) {
@@ -422,7 +422,7 @@ function updateHint() {
     if ($('price-min').value.trim() && min == null) bad.push('min');
     if ($('price-max').value.trim() && max == null) bad.push('max');
     if (bad.length) {
-        $('range-hint').textContent = `Can't read the ${bad.join(' and ')} price — try 400, 1200k or 12m`;
+        $('range-hint').textContent = `Can't read the ${bad.join(' and ')} price - try 400, 1200k or 12m`;
         $('add-btn').disabled = true;
         return;
     }
@@ -510,9 +510,9 @@ function render(watches) {
             none.className = 'wl-none';
             // "Nothing close" and "nothing at all" are very different answers.
             if (w.farCount) {
-                none.textContent = `${w.farCount} offer${w.farCount > 1 ? 's' : ''}, none near your price — best is ${formatGp(w.best)} gp.`;
+                none.textContent = `${w.farCount} offer${w.farCount > 1 ? 's' : ''}, none near your price - best is ${formatGp(w.best)} gp.`;
             } else if (w.suspectCount) {
-                none.textContent = `${w.suspectCount} offer${w.suspectCount > 1 ? 's' : ''} ignored — the price listed is nowhere ` +
+                none.textContent = `${w.suspectCount} offer${w.suspectCount > 1 ? 's' : ''} ignored - the price listed is nowhere ` +
                                    `near what this goes for, with no real figure in the notes.`;
             } else {
                 none.textContent = w.direction === 'buy' ? 'Nobody is selling this right now.' : 'Nobody is buying this right now.';
@@ -525,7 +525,7 @@ function render(watches) {
             w.listings.slice(0, 5).forEach(l => {
                 const row = document.createElement('div');
                 row.className = 'wl-row' + (matchIds.has(l.id) ? ' match' : '');
-                row.title = `${l.offer} — ${timeAgo(l.updatedAt)}${l.notes ? '\n"' + l.notes + '"' : ''}` +
+                row.title = `${l.offer} - ${timeAgo(l.updatedAt)}${l.notes ? '\n"' + l.notes + '"' : ''}` +
                     (l.priceFromNotes ? '\n\nThe coin field was a placeholder; this price was read from the notes.' : '');
                 row.onclick = () => ipcRenderer.send('open-market-item', w.slug);
                 const price = document.createElement('span');
@@ -562,7 +562,7 @@ function render(watches) {
             if (w.suspectCount) extras.push(`${w.suspectCount} ignored`);
             right.textContent = extras.join(' · ');
             right.title = 'Offers outside your price window, offers paid in items rather than coins, and ' +
-                          'placeholder prices — a token amount listed with the real one in the notes';
+                          'placeholder prices - a token amount listed with the real one in the notes';
             foot.append(left, right);
             card.appendChild(foot);
         }
@@ -639,7 +639,7 @@ function buildEditForm(w) {
         const badMin = minIn.value.trim() && p.min == null;
         const badMax = maxIn.value.trim() && p.max == null;
         if (badMin || badMax) {
-            hintEl.textContent = "Can't read that price — try 400, 1200k or 12m";
+            hintEl.textContent = "Can't read that price - try 400, 1200k or 12m";
             save.disabled = true;
             return;
         }
@@ -703,7 +703,7 @@ setInterval(updateFreshness, 30000);
 
 function goBack() { ipcRenderer.send('switch-nav-view', 'nav'); }
 function openInWindow() { ipcRenderer.send('open-watchlist-window'); }
-// Opens the price history window with nothing loaded, ready to search — so
+// Opens the price history window with nothing loaded, ready to search - so
 // looking a price up never requires committing to a watch first.
 function openPriceCheck() { ipcRenderer.send('open-price-history-window', { slug: '', name: '' }); }
 

@@ -1,5 +1,17 @@
 const { ipcRenderer } = require('electron');
 
+// Default the client to Auto Sizing. Size lives in localStorage.canvasSize on
+// the world origin: absent = 1x fixed. Set it only when unset, so a size the
+// player picked is never overwritten. Preload runs before the page scripts.
+try {
+  if (localStorage.getItem('canvasSize') === null) {
+    localStorage.setItem('canvasSize', 'auto');
+  }
+} catch (e) {
+  // Storage can be unavailable while the page is still setting up; the client
+  // simply falls back to its own default, which is no worse than before.
+}
+
 // Forward wheel events (when Ctrl is held) to the main process for zoom
 window.addEventListener('wheel', (e) => {
     try {
@@ -24,7 +36,7 @@ window.addEventListener('DOMContentLoaded', () => {
         ipcRenderer.send('game-view-mouse-clicked');
     }, true);
 
-    // Hover enter/leave — fires once on transition, no jitter.
+    // Hover enter/leave - fires once on transition, no jitter.
     // main.js decides whether to act based on afkInputType === 'hover'.
     document.addEventListener('mouseenter', () => {
         ipcRenderer.send('game-view-hover-enter');

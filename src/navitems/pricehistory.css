@@ -1,8 +1,8 @@
-/* Price history — its own window, so the chart can actually be read.
+/* Price history - its own window, so the chart can actually be read.
    Colour is consistent throughout: gold is the price series, green a seller's
    sale, blue a filled buy offer, amber an estimated value. */
 
-/* Small print — the plain face, see --font-small in main.css. The trade table,
+/* Small print - the plain face, see --font-small in main.css. The trade table,
    the legend and the hover popup are all set at 10-11px and are exactly where
    the bold face stops being readable. */
 .ph-sub,
@@ -20,7 +20,7 @@
 .ph-tip .tip-more,
 .ph-tr,
 .axis-label {
-    /* !important beats the blanket rule buildFontCSS() injects — see the note
+    /* !important beats the blanket rule buildFontCSS() injects - see the note
        in watchlist.css. */
     font-family: var(--font-small) !important;
 }
@@ -156,7 +156,7 @@
 .ph-chart svg { width: 100%; height: auto; display: block; cursor: crosshair; }
 
 .grid-line { stroke: #262218; stroke-width: 1; }
-/* Vertical time lines sit fainter than the price ones — they orient you
+/* Vertical time lines sit fainter than the price ones - they orient you
    without competing with the data. */
 .grid-line.v { stroke: #221f17; stroke-dasharray: 2 5; }
 .axis-base { stroke: #3a3220; stroke-width: 1; }
@@ -358,7 +358,7 @@
 .ph-tr .price { color: #fff; font-weight: bold; }
 .ph-tr .price.approx { color: #e0a94a; }
 .ph-tr .price.none { color: #6a5a2a; font-weight: normal; }
-/* A listed price we refused to believe — flagged, not hidden, so it can be
+/* A listed price we refused to believe - flagged, not hidden, so it can be
    checked by hand if it turns out to be genuine. */
 .ph-tr .price.suspect { color: #b06a6a; font-weight: normal; font-style: italic; }
 .ph-tr .side { font-size: 11px; }
@@ -366,7 +366,7 @@
 .ph-tr .side.buy { color: #74a0ff; }
 .ph-tr .who { color: #8a9ab8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ph-tr .when, .ph-tr .qty { color: #7d6f49; font-size: 11px; }
-/* Two lines rather than one truncated one — offers routinely name several
+/* Two lines rather than one truncated one - offers routinely name several
    items and "which dragonhide" matters. The full list is in the hover popup. */
 .ph-tr .offer {
     color: #6a5f3c;

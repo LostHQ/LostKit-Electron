@@ -1,8 +1,8 @@
-/* Price Watch panel — lives in the 250px nav column, so everything here is
+/* Price Watch panel - lives in the 250px nav column, so everything here is
    sized to survive that width. Palette matches main.css: #8b6914 gold borders,
    #f0e68c text, #1a1a1a panels. */
 
-/* Small print — the plain face, see --font-small in main.css. This panel lives
+/* Small print - the plain face, see --font-small in main.css. This panel lives
    in a 250px column, so most of what it says is set at 10-11px.
    !important is not optional here: buildFontCSS() in main.js injects
    "body, body * { font-family: 'RS-Bold' !important }" into every view, and a
@@ -98,7 +98,7 @@
 .wl-qlabel { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: #6f6242; }
 .wl-qval { font-size: 15px; font-weight: bold; color: #fff; text-align: right; white-space: nowrap; }
 .wl-qval.none { font-size: 12px; color: #5a5238; }
-/* "pay" / "get" — quieter than the number it qualifies, but part of it */
+/* "pay" / "get" - quieter than the number it qualifies, but part of it */
 .wl-qverb { font-size: 11px; font-weight: normal; color: #9a8a5a; }
 .wl-qsub { grid-column: 1 / -1; font-size: 10px; color: #8f8055; margin-top: 1px; }
 .wl-qsub b { font-weight: normal; color: #a89868; }
@@ -305,7 +305,7 @@
     overflow: hidden;
 }
 
-/* A card with live matches earns the gold treatment — that is the whole point
+/* A card with live matches earns the gold treatment - that is the whole point
    of the panel, so it should be obvious at a glance from across the room. */
 .wl-card.hit { border-color: #c8941c; box-shadow: 0 0 8px rgba(200, 148, 28, 0.35); }
 
@@ -352,7 +352,7 @@
 .wl-row:hover { background: rgba(139, 105, 20, 0.2); }
 .wl-row.match .wl-price { color: #51cf66; font-weight: bold; }
 .wl-row .wl-price { color: #f0e68c; flex-shrink: 0; }
-/* Price read out of the notes rather than the coin field — real, but not as
+/* Price read out of the notes rather than the coin field - real, but not as
    certain as a number the site itself recorded. */
 .wl-row .wl-price.approx { color: #e0a94a; }
 .wl-row .wl-qty { color: #9a8a5a; flex-shrink: 0; }
@@ -430,7 +430,7 @@
 
 .wl-spark-legend b { color: #f0e68c; font-weight: bold; }
 
-/* Freshness — the panel polls on its own, and should look like it */
+/* Freshness - the panel polls on its own, and should look like it */
 .wl-poll { margin: -4px 2px 8px; font-size: 10px; color: #7a6a3a; }
 .wl-checked { cursor: help; }
 

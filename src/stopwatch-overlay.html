@@ -173,7 +173,7 @@
         beepOscillator.stop(audioContext.currentTime + 0.3);
         
         console.log('Beep sound played at volume:', soundVolume);
-        // soundPlayed is reset only when the timer resets — never on a timeout,
+        // soundPlayed is reset only when the timer resets - never on a timeout,
         // so it cannot replay when drifting into negative time.
         
       } catch (e) {
@@ -246,11 +246,11 @@
         const remaining = maxTime - seconds;
 
         if (remaining <= 0 && mode === 'afk') {
-          // AFK: past logout threshold — show negative time, static red, NO sound replay
+          // AFK: past logout threshold - show negative time, static red, NO sound replay
           timerEl.textContent = formatTime(remaining);
           timerEl.classList.remove('flash-red');
           timerEl.style.color = '#ff0000';
-          // soundPlayed stays true — never replay once we've gone negative
+          // soundPlayed stays true - never replay once we've gone negative
         } else if (remaining <= 0) {
           // Countdown mode finished
           timerEl.textContent = '00:00';
@@ -300,7 +300,7 @@
       if (mode === 'countdown') {
         if (seconds >= customTime) return;
       }
-      // AFK mode: always keep incrementing — display shows negative when past targetTime
+      // AFK mode: always keep incrementing - display shows negative when past targetTime
       seconds++;
       updateDisplay();
     }
@@ -340,10 +340,10 @@
       updateDisplay();
     });
 
-    // Mouse entered canvas OR mouse moved again after being idle — PAUSE timer, show 1:30
+    // Mouse entered canvas OR mouse moved again after being idle - PAUSE timer, show 1:30
     ipcRenderer.on('afk-hover-paused', () => {
       if (mode !== 'afk') return;
-      console.log('overlay: afk-hover-paused — pausing & resetting display');
+      console.log('overlay: afk-hover-paused - pausing & resetting display');
       if (interval) {
         clearInterval(interval);
         interval = null;
@@ -356,10 +356,10 @@
       // running stays as-is so resume knows whether to restart
     });
 
-    // Mouse went IDLE inside canvas OR mouse LEFT canvas — START/RESTART countdown from 1:30
+    // Mouse went IDLE inside canvas OR mouse LEFT canvas - START/RESTART countdown from 1:30
     ipcRenderer.on('afk-hover-resumed', () => {
       if (mode !== 'afk') return;
-      console.log('overlay: afk-hover-resumed — restarting countdown from 0');
+      console.log('overlay: afk-hover-resumed - restarting countdown from 0');
       seconds = 0;
       soundPlayed = false;
       timerEl.classList.remove('flash-red');
@@ -369,7 +369,13 @@
       running = true;
       startBtn.textContent = 'Pause';
       updateDisplay();
-    }); (event, newMode, newTime) => {
+    });
+
+    // Orphaned handler body: its opening was lost, which is a syntax error and
+    // stopped this whole script block from running. Kept commented for
+    // reference. Nothing loads this file.
+    /*
+    (event, newMode, newTime) => {
       mode = newMode;
       timerEl.classList.remove('flash-red');
       
@@ -401,6 +407,7 @@
       // Resize window after mode change
       setTimeout(resizeWindow, 100);
     });
+    */
 
     // Listen for setting updates from panel
     ipcRenderer.on('update-setting', (event, setting, value) => {
@@ -462,9 +469,9 @@
         }
       }
       else if (setting === 'afk-pause') {
-        // Mouse entered canvas — pause timer and reset display to 1:30
+        // Mouse entered canvas - pause timer and reset display to 1:30
         if (mode === 'afk') {
-          console.log('overlay: afk-pause — pausing timer');
+          console.log('overlay: afk-pause - pausing timer');
           if (running) {
             clearInterval(interval);
             interval = null;

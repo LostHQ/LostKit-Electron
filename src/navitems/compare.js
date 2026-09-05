@@ -34,7 +34,7 @@ let current = null;   // { a: {name, byType}, b: {name, byType} }
 const ERRORS = {
     empty:       'Enter a name.',
     notfound:    'No hiscores entry for that name.',
-    ratelimited: 'The hiscores API is rate limiting us — wait a moment and try again.',
+    ratelimited: 'The hiscores API is rate limiting us - wait a moment and try again.',
     network:     'Could not reach the hiscores API.'
 };
 
@@ -88,7 +88,7 @@ const valueOf = (side, type) => {
 };
 
 // Levels stop at 99, so two maxed accounts look identical on level alone even
-// when one has ten times the xp. XP breaks every level tie — which past 99 is
+// when one has ten times the xp. XP breaks every level tie - which past 99 is
 // the only thing that separates anyone.
 function compareSides(sa, sb) {
     const va = sa ? (mode === 'xp' ? sa.xp : sa.level) : 0;
@@ -111,7 +111,7 @@ function render() {
     host.innerHTML = '';
     host.appendChild(buildHeader(a, b));
 
-    // Total first, as its own row — it is the headline result, and it is not a
+    // Total first, as its own row - it is the headline result, and it is not a
     // skill, so it stays out of the skills-won tally below.
     const totalCmp = compareSides(a.byType[0], b.byType[0]);
     const totalRow = buildRow(0, a.byType[0], b.byType[0], totalCmp);
@@ -167,7 +167,7 @@ function buildRow(type, statA, statB, cmp) {
     row.className = 'cmp-row' + (cmp.byXp ? ' by-xp' : '');
     row.title = `${skill.name}\n${statLine(statA)}\n${statLine(statB)}` +
                 (cmp.gap ? `\ndifference: ${cmp.gap.toLocaleString()} ${cmp.unit}` : '') +
-                (cmp.byXp ? '\n(same level — decided on xp)' : '');
+                (cmp.byXp ? '\n(same level - decided on xp)' : '');
 
     const arrow = document.createElement('span');
     arrow.className = 'cmp-arrow ' + verdict;
@@ -203,7 +203,7 @@ function skillIcon(skill) {
 function valueCell(stat, winClass) {
     const cell = document.createElement('span');
     cell.className = 'cmp-val' + (winClass ? ' ' + winClass : '') + (stat ? '' : ' none');
-    cell.textContent = !stat ? '—' : (mode === 'xp' ? formatXp(stat.xp) : String(stat.level));
+    cell.textContent = !stat ? '-' : (mode === 'xp' ? formatXp(stat.xp) : String(stat.level));
     return cell;
 }
 
@@ -245,5 +245,5 @@ ipcRenderer.on('compare-prefill', (event, names) => {
 });
 
 $('results').innerHTML = '<div class="cmp-empty">Compare two accounts skill by skill.<br>' +
-    'The arrow points at whoever leads — green when the left player is ahead, red when behind, blue when level.</div>';
+    'The arrow points at whoever leads - green when the left player is ahead, red when behind, blue when level.</div>';
 $('p1').focus();
